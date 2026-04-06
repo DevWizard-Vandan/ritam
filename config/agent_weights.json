@@ -1,0 +1,10 @@
+{
+  "updated_at": "2026-04-05T00:00:00+05:30",
+  "weights": {
+    "sentiment_agent": 0.25,
+    "gift_nifty_agent": 0.25,
+    "macro_agent": 0.25,
+    "volatility_agent": 0.25
+  },
+  "week_accuracy": null
+}
