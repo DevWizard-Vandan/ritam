@@ -73,13 +73,24 @@ def _candles_to_dataframe(candles: list[dict[str, Any]]) -> pd.DataFrame:
     return frame
 
 
+def _normalize_date_bounds(start_date: str, end_date: str) -> tuple[str, str]:
+    normalized_start = f"{start_date}T00:00:00" if "T" not in start_date else start_date
+    normalized_end = f"{end_date}T23:59:59" if "T" not in end_date else end_date
+    return normalized_start, normalized_end
+
+
 def load_nifty_data(
     start_date: str,
     end_date: str,
     symbol: str = "NSE:NIFTY 50",
 ) -> bt.feeds.PandasData:
     """Load Nifty candles from SQLite and return a Backtrader feed."""
-    candles = read_candles(symbol=symbol, from_date=start_date, to_date=end_date)
+    normalized_start, normalized_end = _normalize_date_bounds(start_date, end_date)
+    candles = read_candles(
+        symbol=symbol,
+        from_date=normalized_start,
+        to_date=normalized_end,
+    )
     dataframe = _candles_to_dataframe(candles)
 
     if dataframe.empty:
@@ -91,7 +102,7 @@ def load_nifty_data(
 def _calculate_cagr(initial_value: float, final_value: float, start: str, end: str) -> float:
     start_dt = datetime.fromisoformat(start)
     end_dt = datetime.fromisoformat(end)
-    years = (end_dt - start_dt).days / 365.25
+    years = (end_dt - start_dt).total_seconds() / (365.25 * 24 * 3600)
     if years <= 0 or initial_value <= 0:
         return 0.0
     return ((final_value / initial_value) ** (1 / years) - 1) * 100
@@ -101,7 +112,7 @@ def run_backtest(
     strategy_class: type[bt.Strategy] = SimpleMovingAverageCrossover,
     start_date: str = "2008-01-01",
     end_date: str = "2009-12-31",
-) -> dict[str, Any]:
+) -> BacktestResult:
     """Run a Backtrader cerebro instance and return trade log + key metrics."""
     cerebro = bt.Cerebro()
     data_feed = load_nifty_data(start_date=start_date, end_date=end_date)
@@ -131,7 +142,7 @@ def run_backtest(
         "cagr": _calculate_cagr(initial_cash, final_value, start_date, end_date),
     }
 
-    return {
-        "trade_log": getattr(strategy, "trade_log", []),
-        "metrics": metrics,
-    }
+    return BacktestResult(
+        trade_log=getattr(strategy, "trade_log", []),
+        metrics=metrics,
+    )

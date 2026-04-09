@@ -38,7 +38,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 ---
 
 ## 🔄 In Progress
-- task_005 — Backtesting engine + 2008 crisis test [Codex]
+- None
 
 ---
 
