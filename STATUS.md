@@ -29,6 +29,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 - [x] src/api/server.py — FastAPI WebSocket server
 - [x] src/api/websocket_manager.py — WS connection manager
 - [x] config/agent_weights.json — initial equal weights
+- [x] tests: initial test suite — Phase 1
 
 ---
 
