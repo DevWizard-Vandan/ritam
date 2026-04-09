@@ -85,3 +85,10 @@ def test_run_backtest_metrics_include_required_keys(monkeypatch):
 
 def test_default_strategy_is_sma_crossover():
     assert SimpleMovingAverageCrossover.__name__ == "SimpleMovingAverageCrossover"
+
+
+def test_synthetic_candles_support_rows_over_20():
+    candles = _synthetic_candles(rows=25)
+
+    assert len(candles) == 25
+    assert candles[24]["close"] == 100 + (24 % 5)

@@ -38,7 +38,6 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 ---
 
 ## 🔄 In Progress
-- None
 
 ---
 
