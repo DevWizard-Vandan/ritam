@@ -12,8 +12,9 @@ from src.data.db import write_candles
 from src.data.kite_client import get_client
 
 IST = pytz.timezone(settings.TIMEZONE)
-NIFTY_TICKER = "^NSEI"
+FETCH_TICKER = "^NSEI"
 NIFTY_TOKEN = 256265
+DB_SYMBOL = settings.NIFTY_SYMBOL
 MARKET_OPEN = time(9, 15)
 MARKET_CLOSE = time(15, 30)
 
@@ -30,11 +31,16 @@ def _candle_to_record(candle: dict) -> dict:
     }
 
 
-def fetch_historical_candles(symbol: str = NIFTY_TICKER) -> int:
+def fetch_historical_candles(symbol: str = DB_SYMBOL) -> int:
     """Fetch daily OHLCV from 2000-01-01 to now and store it in SQLite."""
     kite = get_client()
     start = IST.localize(datetime(2000, 1, 1, 0, 0, 0))
     end = datetime.now(IST)
+    logger.info(
+        "Fetching historical daily candles via {} for DB symbol {}",
+        FETCH_TICKER,
+        symbol,
+    )
 
     candles_raw = kite.historical_data(
         instrument_token=NIFTY_TOKEN,
@@ -59,17 +65,18 @@ def fetch_historical_candles(symbol: str = NIFTY_TICKER) -> int:
     return len(records)
 
 
-def fetch_intraday_candles(symbol: str = NIFTY_TICKER) -> int:
+def fetch_intraday_candles(symbol: str = DB_SYMBOL) -> int:
     """Fetch today's 1-minute candles between 09:15 and 15:30 IST and store them."""
     now = datetime.now(IST)
-    today_open = IST.localize(datetime.combine(now.date(), MARKET_OPEN))
-    today_close = IST.localize(datetime.combine(now.date(), MARKET_CLOSE))
-
-    if now < today_open:
+    if now.time() < MARKET_OPEN:
         logger.info("Market has not opened yet in IST; skipping intraday fetch")
         return 0
+    if now.time() > MARKET_CLOSE:
+        logger.info("Market is closed in IST; skipping intraday fetch")
+        return 0
 
-    to_time = min(now, today_close)
+    today_open = IST.localize(datetime.combine(now.date(), MARKET_OPEN))
+    to_time = now
     kite = get_client()
     candles_raw = kite.historical_data(
         instrument_token=NIFTY_TOKEN,
