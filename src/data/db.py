@@ -4,9 +4,12 @@ Uses SQLAlchemy for all DB operations.
 """
 import sqlite3
 import os
-from datetime import datetime
 from src.config import settings
-from loguru import logger
+try:
+    from loguru import logger
+except ModuleNotFoundError:  # pragma: no cover - environment fallback
+    import logging
+    logger = logging.getLogger(__name__)
 
 
 def get_connection():
@@ -35,6 +38,20 @@ def init_db():
                 published_at TEXT,
                 fetched_at TEXT
             )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS news_raw (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source TEXT,
+                headline TEXT NOT NULL,
+                url TEXT UNIQUE,
+                published_at TEXT,
+                fetched_at TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_news_dedup
+            ON news_raw(source, headline, COALESCE(url, ''))
         """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS predictions (
@@ -76,3 +93,13 @@ def read_candles(symbol: str, from_date: str, to_date: str) -> list[dict]:
         """, (symbol, from_date, to_date)).fetchall()
     return [{"timestamp_ist": r[0], "open": r[1], "high": r[2],
              "low": r[3], "close": r[4], "volume": r[5]} for r in rows]
+
+
+def write_news_raw(records: list[dict]):
+    """Insert raw news headline records, ignoring duplicate URLs."""
+    with get_connection() as conn:
+        conn.executemany("""
+            INSERT OR IGNORE INTO news_raw (source, headline, url, published_at, fetched_at)
+            VALUES (:source, :headline, :url, :published_at, :fetched_at)
+        """, records)
+        conn.commit()

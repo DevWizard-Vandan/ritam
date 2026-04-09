@@ -1,6 +1,6 @@
 # RITAM — Project Status
-# Last Updated: April 9, 2026 — Task 002 OHLCV pipeline in progress
-# Updating Agent: Codex (feature/ohlcv-pipeline)
+# Last Updated: April 9, 2026 — Task 003 news ingestion pipeline implemented
+# Updating Agent: Codex (feature/news-pipeline)
 
 ---
 
@@ -29,6 +29,8 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 - [x] src/api/server.py — FastAPI WebSocket server
 - [x] src/api/websocket_manager.py — WS connection manager
 - [x] config/agent_weights.json — initial equal weights
+- [x] src/data/news_fetcher.py — NewsAPI + RSS ingestion with APScheduler job and SQLite news_raw persistence
+- [x] tests/data/test_news_fetcher.py — mocked unit tests for news ingestion pipeline
 - [x] tests: initial test suite — Phase 1
 
 ---
@@ -45,9 +47,8 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 
 ## 📋 Up Next (Assign These in Order)
 1. task_002 — OHLCV historical + live pipeline [Codex]
-3. task_003 — News ingestion pipeline [Codex]
-4. task_004 — FinBERT scorer (complete implementation) [Claude Code]
-5. task_010 — Gemma reasoning layer (after Ollama installed) [Claude Code]
+2. task_004 — FinBERT scorer (complete implementation) [Claude Code]
+3. task_010 — Gemma reasoning layer (after Ollama installed) [Claude Code]
 
 ---
 
@@ -63,7 +64,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 | Branch   | Status | PR |
 |----------|--------|----|
 | main     | Clean  | —  |
-| feature/data-pipeline | task_001 complete (yfinance-based kite_client) | pending |
+| feature/news-pipeline | task_003 complete (news ingestion pipeline) | pending |
 
 ---
 
