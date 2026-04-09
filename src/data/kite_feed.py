@@ -3,7 +3,6 @@ OHLCV data fetcher — historical + live candle ingestion from Zerodha Kite.
 """
 from datetime import datetime, timedelta
 import pytz
-from kiteconnect import KiteConnect
 from src.data.kite_client import get_client
 from src.data.db import write_candles
 from src.config import settings
