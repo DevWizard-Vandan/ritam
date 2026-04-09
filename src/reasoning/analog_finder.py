@@ -1,93 +1,149 @@
-"""
-Historical analog finder — uses Gemma 4 26B to find past market scenarios
-that most closely resemble current conditions.
-"""
-from src.reasoning.gemma_client import deep_reason
-from loguru import logger
+"""Historical analog finder based on candle-pattern similarity from SQLite data."""
+
+from __future__ import annotations
+
+import math
+from typing import Iterable
+
+from src.config.settings import settings
+from src.data.db import read_candles
 
 
-ANALOG_PROMPT_TEMPLATE = """
-You are a financial historian with deep knowledge of global market history.
-
-Current market conditions:
-- Regime: {regime}
-- India VIX level: {vix_level} ({vix_label})
-- Sentiment score: {sentiment_score} ({sentiment_label})
-- GIFT Nifty overnight gap: {gift_gap_pct}%
-- Active macro event: {macro_event}
-
-Task: Find the 3 most historically similar market scenarios.
-These can be from any global market (Indian, US, global) and any era.
-
-For each scenario, respond in this EXACT format:
-MATCH_1: [scenario name and approximate date]
-SIMILARITY: [short description of why conditions match]
-OUTCOME: [what the market did over the next 5–10 sessions]
-CONFIDENCE: [high/medium/low]
-
-MATCH_2: ...
-SIMILARITY: ...
-OUTCOME: ...
-CONFIDENCE: ...
-
-MATCH_3: ...
-SIMILARITY: ...
-OUTCOME: ...
-CONFIDENCE: ...
-
-Be specific and concise.
-"""
+def _extract_close_series(candles: Iterable[dict]) -> list[float]:
+    closes: list[float] = []
+    for candle in candles:
+        close = candle.get("close")
+        if close is None:
+            return []
+        try:
+            closes.append(float(close))
+        except (TypeError, ValueError):
+            return []
+    return closes
 
 
-def find_analogs(conditions: dict) -> list[dict]:
-    """
-    conditions = {
-      "regime": "recovery",
-      "vix_level": 18.5,
-      "sentiment_score": 0.62,
-      "gift_gap_pct": 0.45,
-      "macro_event": "RBI holds rates"
-    }
-    Returns list of 3 analog dicts.
-    """
-    vix = conditions.get("vix_level", 0)
-    vix_label = "low" if vix < 14 else "high" if vix > 22 else "moderate"
-    sentiment = conditions.get("sentiment_score", 0)
-    sentiment_label = "bullish" if sentiment > 0.3 else "bearish" if sentiment < -0.3 else "neutral"
-
-    prompt = ANALOG_PROMPT_TEMPLATE.format(
-        regime=conditions.get("regime", "unknown"),
-        vix_level=vix,
-        vix_label=vix_label,
-        sentiment_score=round(sentiment, 2),
-        sentiment_label=sentiment_label,
-        gift_gap_pct=conditions.get("gift_gap_pct", 0.0),
-        macro_event=conditions.get("macro_event", "None")
-    )
-
-    raw = deep_reason(prompt)
-    if raw == "REASONING_UNAVAILABLE":
+def _pct_returns(closes: list[float]) -> list[float]:
+    if len(closes) < 2:
         return []
 
-    return _parse_analogs(raw)
+    returns: list[float] = []
+    for prev_close, close in zip(closes, closes[1:]):
+        if prev_close == 0:
+            return []
+        returns.append(((close - prev_close) / prev_close) * 100.0)
+    return returns
 
 
-def _parse_analogs(raw: str) -> list[dict]:
-    """Parse Gemma's structured response into a list of dicts."""
-    analogs = []
-    blocks = raw.strip().split("MATCH_")
-    for block in blocks[1:4]:  # max 3
-        lines = block.strip().splitlines()
-        analog = {"match": "", "similarity_description": "", "expected_outcome": "", "confidence": "medium"}
-        for line in lines:
-            if line.startswith(("1:", "2:", "3:")):
-                analog["match"] = line.split(":", 1)[-1].strip()
-            elif line.upper().startswith("SIMILARITY:"):
-                analog["similarity_description"] = line.split(":", 1)[-1].strip()
-            elif line.upper().startswith("OUTCOME:"):
-                analog["expected_outcome"] = line.split(":", 1)[-1].strip()
-            elif line.upper().startswith("CONFIDENCE:"):
-                analog["confidence"] = line.split(":", 1)[-1].strip().lower()
-        if analog["match"]:
-            analogs.append(analog)
-    return analogs
+def _cosine_similarity(a: list[float], b: list[float]) -> float | None:
+    if len(a) != len(b) or not a:
+        return None
+
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+    if norm_a == 0 or norm_b == 0:
+        return None
+
+    score = dot / (norm_a * norm_b)
+    return max(-1.0, min(1.0, score))
+
+
+def _dtw_distance(a: list[float], b: list[float]) -> float:
+    n = len(a)
+    m = len(b)
+    dtw = [[math.inf] * (m + 1) for _ in range(n + 1)]
+    dtw[0][0] = 0.0
+
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            cost = abs(a[i - 1] - b[j - 1])
+            dtw[i][j] = cost + min(dtw[i - 1][j], dtw[i][j - 1], dtw[i - 1][j - 1])
+
+    return dtw[n][m]
+
+
+def _dtw_similarity(a: list[float], b: list[float]) -> float:
+    if len(a) != len(b) or not a:
+        return 0.0
+    return 1.0 / (1.0 + _dtw_distance(a, b))
+
+
+def _to_date(timestamp_value: str) -> str:
+    if "T" in timestamp_value:
+        return timestamp_value.split("T", 1)[0]
+    if " " in timestamp_value:
+        return timestamp_value.split(" ", 1)[0]
+    return timestamp_value
+
+
+def find_analogs(current_window: list[dict], top_n: int = 5) -> list[dict]:
+    """
+    Find the most similar historical windows versus the current daily candle window.
+
+    Args:
+        current_window: Last N daily candles, each containing at least {timestamp_ist, close}.
+        top_n: Number of best matches to return.
+
+    Returns:
+        List of dicts with start_date, end_date, similarity_score, and next_5day_return.
+    """
+    if top_n <= 0 or len(current_window) < 2:
+        return []
+
+    current_closes = _extract_close_series(current_window)
+    current_returns = _pct_returns(current_closes)
+    if not current_returns:
+        return []
+
+    window_len = len(current_window)
+
+    historical_candles = read_candles(
+        symbol=settings.NIFTY_SYMBOL,
+        from_date="1900-01-01",
+        to_date="2100-01-01",
+    )
+
+    if len(historical_candles) < window_len + 5:
+        return []
+
+    matches: list[dict] = []
+    last_start_index = len(historical_candles) - window_len - 5
+
+    for start_idx in range(last_start_index + 1):
+        window = historical_candles[start_idx : start_idx + window_len]
+        window_closes = _extract_close_series(window)
+        window_returns = _pct_returns(window_closes)
+        if not window_returns:
+            continue
+
+        similarity = _cosine_similarity(current_returns, window_returns)
+        if similarity is None:
+            similarity = _dtw_similarity(current_returns, window_returns)
+
+        end_idx = start_idx + window_len - 1
+        next_5_idx = end_idx + 5
+        end_close = historical_candles[end_idx].get("close")
+        next_5_close = historical_candles[next_5_idx].get("close")
+
+        try:
+            end_close = float(end_close)
+            next_5_close = float(next_5_close)
+        except (TypeError, ValueError):
+            continue
+
+        if end_close == 0:
+            continue
+
+        next_5day_return = ((next_5_close - end_close) / end_close) * 100.0
+
+        matches.append(
+            {
+                "start_date": _to_date(str(window[0].get("timestamp_ist", ""))),
+                "end_date": _to_date(str(window[-1].get("timestamp_ist", ""))),
+                "similarity_score": round(float(similarity), 6),
+                "next_5day_return": round(next_5day_return, 4),
+            }
+        )
+
+    matches.sort(key=lambda item: item["similarity_score"], reverse=True)
+    return matches[:top_n]
