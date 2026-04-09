@@ -6,10 +6,12 @@ from unittest.mock import patch, MagicMock
 
 @pytest.fixture
 def client():
+    from starlette.testclient import TestClient
+    from starlette.middleware.wsgi import WSGIMiddleware
     with patch("src.data.db.read_candles", return_value=[]), \
          patch("src.data.db.get_connection"):
         from src.api.server import app
-        return TestClient(app)
+        return TestClient(WSGIMiddleware(app), raise_server_exceptions=True)
 
 
 def test_accuracy_endpoint_returns_dict(client):
