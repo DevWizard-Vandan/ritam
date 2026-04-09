@@ -1,5 +1,9 @@
 import os
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover - environment fallback
+    def load_dotenv(*_args, **_kwargs):
+        return False
 
 load_dotenv()
 
