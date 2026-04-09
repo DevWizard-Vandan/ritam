@@ -2,15 +2,15 @@ import pytest
 from unittest.mock import patch
 from src.reasoning.regime_classifier import classify_regime, REGIME_PROMPT, VALID_REGIMES
 
+@pytest.mark.parametrize("regime", VALID_REGIMES)
 @patch('src.reasoning.regime_classifier.quick_reason')
-def test_classify_regime_valid_output(mock_quick_reason):
-    """Test that a valid regime response is returned correctly."""
-    # Simulate a valid response
-    mock_quick_reason.return_value = "trending_up"
+def test_classify_regime_valid_output(mock_quick_reason, regime):
+    """Test that every valid regime response is parsed and returned correctly."""
+    mock_quick_reason.return_value = regime
 
     result = classify_regime(1.5, 12.0, 50, 0.8)
 
-    assert result == "trending_up"
+    assert result == regime
     mock_quick_reason.assert_called_once()
 
 @patch('src.reasoning.regime_classifier.quick_reason')

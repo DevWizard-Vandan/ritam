@@ -7,15 +7,20 @@ from src.config import settings
 @pytest.fixture(autouse=True)
 def mock_db_path(tmp_path, monkeypatch):
     """Fixture to mock settings.DB_PATH to a temporary file for tests."""
-    db_file = tmp_path / "test_market.db"
+    # Use a nested path to ensure get_connection() creates the directory
+    db_file = tmp_path / "nested" / "test_market.db"
     monkeypatch.setattr(settings, "DB_PATH", str(db_file))
     return db_file
 
 def test_get_connection_creates_dir(mock_db_path):
     """Test that get_connection creates the directory if it doesn't exist."""
-    # The fixture already sets DB_PATH. Let's make sure it creates the dir
+    # The nested directory shouldn't exist initially
+    db_dir = os.path.dirname(settings.DB_PATH)
+    assert not os.path.exists(db_dir)
+
     conn = get_connection()
-    assert os.path.exists(os.path.dirname(settings.DB_PATH))
+
+    assert os.path.exists(db_dir)
     assert isinstance(conn, sqlite3.Connection)
     conn.close()
 

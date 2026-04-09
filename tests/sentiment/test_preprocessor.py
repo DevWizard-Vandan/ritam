@@ -8,8 +8,7 @@ def test_clean_headline_strip_whitespace():
 def test_clean_headline_remove_urls():
     # Test that URLs are stripped out completely
     text = "Check this out https://example.com/news?id=123"
-    # Preprocessor does not rstrip after removing URLs, so there is a trailing space
-    assert clean_headline(text) == "Check this out "
+    assert clean_headline(text) == "Check this out"
 
 def test_clean_headline_normalize_spaces():
     # Test that multiple spaces are compressed into a single space
@@ -33,6 +32,6 @@ def test_clean_headlines_list_processing():
     ]
     expected = [
         "Headline 1",
-        "Headline 2 "
+        "Headline 2"
     ]
     assert clean_headlines(input_list) == expected
