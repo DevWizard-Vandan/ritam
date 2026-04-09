@@ -1,5 +1,5 @@
 # RITAM — Project Status
-# Last Updated: April 9, 2026 — Task 005 backtesting engine implemented
+# Last Updated: April 9, 2026 — Analog finder reviewed fixes (daily collapse + symbol/date range)
 # Updating Agent: Codex (feature/backtesting-engine)
 
 ---
@@ -34,6 +34,9 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 - [x] tests: initial test suite — Phase 1
 - [x] src/backtest/engine.py — Backtrader engine with SMA crossover, trade log, and performance metrics
 - [x] tests/backtest/test_engine.py — synthetic-candle unit tests (no DB calls)
+- [x] src/reasoning/analog_finder.py — DB-driven historical window matcher (cosine/DTW) with next-5-day outcome
+- [x] tests/reasoning/test_analog_finder.py — mocked unit tests for analog matching logic
+- [x] src/reasoning/analog_finder.py — review fixes: intraday→daily collapse, symbol param, bounded history range
 
 ---
 
