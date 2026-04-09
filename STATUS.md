@@ -1,6 +1,6 @@
 # RITAM — Project Status
-# Last Updated: April 9, 2026 — Task 003 news ingestion pipeline implemented
-# Updating Agent: Codex (feature/news-pipeline)
+# Last Updated: April 9, 2026 — Task 005 backtesting engine implemented
+# Updating Agent: Codex (feature/backtesting-engine)
 
 ---
 
@@ -32,11 +32,13 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 - [x] src/data/news_fetcher.py — NewsAPI + RSS ingestion with APScheduler job and SQLite news_raw persistence
 - [x] tests/data/test_news_fetcher.py — mocked unit tests for news ingestion pipeline
 - [x] tests: initial test suite — Phase 1
+- [x] src/backtest/engine.py — Backtrader engine with SMA crossover, trade log, and performance metrics
+- [x] tests/backtest/test_engine.py — synthetic-candle unit tests (no DB calls)
 
 ---
 
 ## 🔄 In Progress
-- task_002 — OHLCV historical + live pipeline [Codex]
+- task_005 — Backtesting engine + 2008 crisis test [Codex]
 
 ---
 
@@ -46,8 +48,8 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 ---
 
 ## 📋 Up Next (Assign These in Order)
-1. task_002 — OHLCV historical + live pipeline [Codex]
-2. task_004 — FinBERT scorer (complete implementation) [Claude Code]
+1. task_006 — Multi-agent orchestrator [Claude Code]
+2. task_007 — Feedback loop [Claude Code]
 3. task_010 — Gemma reasoning layer (after Ollama installed) [Claude Code]
 
 ---
@@ -64,7 +66,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 | Branch   | Status | PR |
 |----------|--------|----|
 | main     | Clean  | —  |
-| feature/news-pipeline | task_003 complete (news ingestion pipeline) | pending |
+| feature/backtesting-engine | task_005 complete (backtesting engine) | pending |
 
 ---
 
