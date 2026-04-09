@@ -142,6 +142,7 @@ def _dedupe_records(records: list[RawHeadlineRecord]) -> list[RawHeadlineRecord]
 
 def fetch_headlines() -> list[str]:
     """Fetch latest Indian market headlines, persist raw records, and return cleaned headline strings."""
+    init_db()
     records = _fetch_newsapi_headlines()
     if not records:
         records = _fetch_rss_headlines()

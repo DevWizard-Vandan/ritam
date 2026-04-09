@@ -1,6 +1,6 @@
 # RITAM — Project Status
 # Last Updated: April 9, 2026 — Task 003 news ingestion pipeline implemented
-# Updating Agent: Codex (feature/data-pipeline)
+# Updating Agent: Codex (feature/news-pipeline)
 
 ---
 

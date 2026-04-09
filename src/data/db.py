@@ -4,7 +4,6 @@ Uses SQLAlchemy for all DB operations.
 """
 import sqlite3
 import os
-from datetime import datetime
 from src.config import settings
 try:
     from loguru import logger
@@ -49,6 +48,10 @@ def init_db():
                 published_at TEXT,
                 fetched_at TEXT
             )
+        """)
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_news_dedup
+            ON news_raw(source, headline, COALESCE(url, ''))
         """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS predictions (
