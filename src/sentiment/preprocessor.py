@@ -6,7 +6,7 @@ def clean_headline(text: str) -> str:
     text = text.strip()
     text = re.sub(r"https?://\S+", "", text)  # remove URLs
     text = re.sub(r"\s+", " ", text)           # normalize whitespace
-    text = text[:512]                          # FinBERT max input length
+    text = text[:512].strip()                  # FinBERT max input length and trim
     return text
 
 
