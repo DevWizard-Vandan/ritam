@@ -76,13 +76,30 @@ def _to_date(timestamp_value: str) -> str:
     return timestamp_value
 
 
-def find_analogs(current_window: list[dict], top_n: int = 5) -> list[dict]:
+def _to_daily_closes(candles: list[dict]) -> list[dict]:
+    """Return one entry per date, keeping the last close of each day."""
+    seen = {}
+    for candle in candles:
+        timestamp_value = str(candle.get("timestamp_ist", ""))
+        if len(timestamp_value) < 10:
+            continue
+        date_value = timestamp_value[:10]
+        seen[date_value] = candle
+    return [seen[day] for day in sorted(seen)]
+
+
+def find_analogs(
+    current_window: list[dict],
+    top_n: int = 5,
+    symbol: str = settings.NIFTY_SYMBOL,
+) -> list[dict]:
     """
     Find the most similar historical windows versus the current daily candle window.
 
     Args:
         current_window: Last N daily candles, each containing at least {timestamp_ist, close}.
         top_n: Number of best matches to return.
+        symbol: Instrument symbol used to query historical candles.
 
     Returns:
         List of dicts with start_date, end_date, similarity_score, and next_5day_return.
@@ -98,19 +115,20 @@ def find_analogs(current_window: list[dict], top_n: int = 5) -> list[dict]:
     window_len = len(current_window)
 
     historical_candles = read_candles(
-        symbol=settings.NIFTY_SYMBOL,
-        from_date="1900-01-01",
+        symbol=symbol,
+        from_date="2000-01-01",
         to_date="2100-01-01",
     )
+    historical_daily = _to_daily_closes(historical_candles)
 
-    if len(historical_candles) < window_len + 5:
+    if len(historical_daily) < window_len + 5:
         return []
 
     matches: list[dict] = []
-    last_start_index = len(historical_candles) - window_len - 5
+    last_start_index = len(historical_daily) - window_len - 5
 
     for start_idx in range(last_start_index + 1):
-        window = historical_candles[start_idx : start_idx + window_len]
+        window = historical_daily[start_idx : start_idx + window_len]
         window_closes = _extract_close_series(window)
         window_returns = _pct_returns(window_closes)
         if not window_returns:
@@ -122,8 +140,8 @@ def find_analogs(current_window: list[dict], top_n: int = 5) -> list[dict]:
 
         end_idx = start_idx + window_len - 1
         next_5_idx = end_idx + 5
-        end_close = historical_candles[end_idx].get("close")
-        next_5_close = historical_candles[next_5_idx].get("close")
+        end_close = historical_daily[end_idx].get("close")
+        next_5_close = historical_daily[next_5_idx].get("close")
 
         try:
             end_close = float(end_close)
