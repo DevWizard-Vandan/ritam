@@ -1,6 +1,6 @@
 # RITAM — Project Status
-# Last Updated: April 6, 2026 — v2 Architecture Initialized
-# Updating Agent: Vandan (project setup)
+# Last Updated: April 9, 2026 — Task 001 updated for yfinance compatibility
+# Updating Agent: Codex (feature/data-pipeline)
 
 ---
 
@@ -17,7 +17,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 - [x] All 12 task files created (Phases 1–7)
 - [x] requirements.txt — all dependencies listed
 - [x] src/config/settings.py — env loader
-- [x] src/data/kite_client.py — Zerodha auth boilerplate
+- [x] src/data/kite_client.py — Kite-compatible client implemented with yfinance (^NSEI / ^NSEBANK)
 - [x] src/data/db.py — SQLite helpers (write/read candles)
 - [x] src/data/kite_feed.py — OHLCV fetcher boilerplate
 - [x] src/sentiment/preprocessor.py — headline cleaner
@@ -33,7 +33,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 ---
 
 ## 🔄 In Progress
-- Nothing yet — assign first task to Codex
+- task_002 — OHLCV historical + live pipeline [Codex]
 
 ---
 
@@ -43,8 +43,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 ---
 
 ## 📋 Up Next (Assign These in Order)
-1. task_001 — Zerodha Kite Connect full client [Codex]
-2. task_002 — OHLCV historical + live pipeline [Codex]
+1. task_002 — OHLCV historical + live pipeline [Codex]
 3. task_003 — News ingestion pipeline [Codex]
 4. task_004 — FinBERT scorer (complete implementation) [Claude Code]
 5. task_010 — Gemma reasoning layer (after Ollama installed) [Claude Code]
@@ -63,6 +62,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 | Branch   | Status | PR |
 |----------|--------|----|
 | main     | Clean  | —  |
+| feature/data-pipeline | task_001 complete (yfinance-based kite_client) | pending |
 
 ---
 
@@ -76,4 +76,3 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 | Gemma 4 (Ollama)   | ₹0        |
 | Gemini API         | ₹0        |
 | **Total**          | **₹3,840**|
-
