@@ -1,6 +1,6 @@
 # RITAM — Project Status
-# Last Updated: April 9, 2026 — Task 001 updated for yfinance compatibility
-# Updating Agent: Codex (feature/data-pipeline)
+# Last Updated: April 9, 2026 — Task 002 OHLCV pipeline in progress
+# Updating Agent: Codex (feature/ohlcv-pipeline)
 
 ---
 
