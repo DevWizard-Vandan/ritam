@@ -31,6 +31,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 - [x] config/agent_weights.json — initial equal weights
 - [x] src/data/news_fetcher.py — NewsAPI + RSS ingestion with APScheduler job and SQLite news_raw persistence
 - [x] tests/data/test_news_fetcher.py — mocked unit tests for news ingestion pipeline
+- [x] tests: initial test suite — Phase 1
 
 ---
 
