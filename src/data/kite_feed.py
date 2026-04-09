@@ -1,50 +1,114 @@
-"""
-OHLCV data fetcher — historical + live candle ingestion from Zerodha Kite.
-"""
-from datetime import datetime, timedelta
+"""OHLCV data fetcher for historical + live candle ingestion via yfinance-backed Kite client."""
+from __future__ import annotations
+
+from datetime import datetime, time
+
 import pytz
-from src.data.kite_client import get_client
-from src.data.db import write_candles
-from src.config import settings
+from apscheduler.schedulers.background import BackgroundScheduler
 from loguru import logger
 
+from src.config import settings
+from src.data.db import write_candles
+from src.data.kite_client import get_client
+
 IST = pytz.timezone(settings.TIMEZONE)
+NIFTY_TICKER = "^NSEI"
+NIFTY_TOKEN = 256265
+MARKET_OPEN = time(9, 15)
+MARKET_CLOSE = time(15, 30)
 
 
-def fetch_historical(symbol: str = "NSE:NIFTY 50", years: int = 10):
-    """Fetch minute-candle historical data and store in DB."""
+def _candle_to_record(candle: dict) -> dict:
+    """Normalize a Kite-shaped candle into DB payload format."""
+    return {
+        "timestamp_ist": candle["date"].astimezone(IST).isoformat(),
+        "open": candle["open"],
+        "high": candle["high"],
+        "low": candle["low"],
+        "close": candle["close"],
+        "volume": candle["volume"],
+    }
+
+
+def fetch_historical_candles(symbol: str = NIFTY_TICKER) -> int:
+    """Fetch daily OHLCV from 2000-01-01 to now and store it in SQLite."""
     kite = get_client()
+    start = IST.localize(datetime(2000, 1, 1, 0, 0, 0))
     end = datetime.now(IST)
-    start = end - timedelta(days=365 * years)
-    logger.info(f"Fetching historical data for {symbol} from {start.date()} to {end.date()}")
+
     candles_raw = kite.historical_data(
-        instrument_token=256265,  # Nifty 50 token
+        instrument_token=NIFTY_TOKEN,
         from_date=start,
         to_date=end,
-        interval="minute"
+        interval="day",
     )
-    candles = [{
-        "timestamp_ist": c["date"].isoformat(),
-        "open": c["open"], "high": c["high"],
-        "low": c["low"], "close": c["close"], "volume": c["volume"]
-    } for c in candles_raw]
-    write_candles(symbol, candles)
-    logger.info(f"Saved {len(candles)} candles for {symbol}")
+    records = [_candle_to_record(candle) for candle in candles_raw]
+
+    if not records:
+        logger.warning("No historical candles returned for {}", symbol)
+        return 0
+
+    write_candles(symbol, records)
+    logger.info(
+        "Stored {} historical daily candles for {} ({} -> {})",
+        len(records),
+        symbol,
+        start.date(),
+        end.date(),
+    )
+    return len(records)
 
 
-def fetch_latest_candle(symbol: str = "NSE:NIFTY 50"):
-    """Fetch the most recent minute candle."""
-    kite = get_client()
+def fetch_intraday_candles(symbol: str = NIFTY_TICKER) -> int:
+    """Fetch today's 1-minute candles between 09:15 and 15:30 IST and store them."""
     now = datetime.now(IST)
+    today_open = IST.localize(datetime.combine(now.date(), MARKET_OPEN))
+    today_close = IST.localize(datetime.combine(now.date(), MARKET_CLOSE))
+
+    if now < today_open:
+        logger.info("Market has not opened yet in IST; skipping intraday fetch")
+        return 0
+
+    to_time = min(now, today_close)
+    kite = get_client()
     candles_raw = kite.historical_data(
-        instrument_token=256265,
-        from_date=now - timedelta(minutes=5),
-        to_date=now,
-        interval="minute"
+        instrument_token=NIFTY_TOKEN,
+        from_date=today_open,
+        to_date=to_time,
+        interval="minute",
     )
-    if candles_raw:
-        c = candles_raw[-1]
-        candles = [{"timestamp_ist": c["date"].isoformat(),
-                    "open": c["open"], "high": c["high"],
-                    "low": c["low"], "close": c["close"], "volume": c["volume"]}]
-        write_candles(symbol, candles)
+    records = [_candle_to_record(candle) for candle in candles_raw]
+
+    if not records:
+        logger.warning("No intraday minute candles returned for {}", symbol)
+        return 0
+
+    write_candles(symbol, records)
+    logger.info(
+        "Stored {} intraday minute candles for {} ({} -> {})",
+        len(records),
+        symbol,
+        today_open.isoformat(),
+        to_time.isoformat(),
+    )
+    return len(records)
+
+
+def start_live_feed() -> BackgroundScheduler:
+    """Start APScheduler job that fetches intraday candles every 60 seconds on weekdays."""
+    scheduler = BackgroundScheduler(timezone=IST)
+    scheduler.add_job(
+        fetch_intraday_candles,
+        trigger="cron",
+        day_of_week="mon-fri",
+        hour="9-15",
+        minute="*",
+        second="0",
+        id="nifty_intraday_feed",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.start()
+    logger.info("Live feed scheduler started for 60-second intraday candle ingestion")
+    return scheduler
