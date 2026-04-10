@@ -40,6 +40,8 @@ class MarketOrchestrator:
         else:
             sentiment_score = 0.0
 
+        sentiment_score = round(sentiment_score, 4)
+
         regime = classify_regime(
             price_change_pct=float(last_candle.get("price_change_pct", 0.0)),
             vix=vix,
@@ -47,6 +49,7 @@ class MarketOrchestrator:
             sentiment=sentiment_score,
         )
 
+        # TODO: preload historical candles once per instance to avoid full DB scan on every run_cycle() call
         top_analogs = find_analogs(recent_daily_candles, top_n=self.analog_top_n)
         signal = self._derive_signal(regime=regime, sentiment_score=sentiment_score)
 
