@@ -1,11 +1,11 @@
-import pytest
 from unittest.mock import patch
 
 from src.reasoning.regime_classifier import classify_regime, VALID_REGIMES, REGIME_PROMPT
 
+
 @patch('src.reasoning.regime_classifier.quick_reason')
 def test_classify_regime_real_market_description(mock_quick_reason):
-    """Test that classify_regime() called with a realistic market description returns one of VALID_REGIMES. Mock quick_reason to return each VALID_REGIME value in turn."""
+    """Test that classify_regime() called with a numeric market indicators returns one of VALID_REGIMES. Mock quick_reason to return each VALID_REGIME value in turn."""
     for regime in VALID_REGIMES:
         mock_quick_reason.return_value = regime
         result = classify_regime(
@@ -23,14 +23,14 @@ def test_market_summary_prompt_formatting(mock_quick_reason):
     mock_quick_reason.return_value = "baseline"
 
     classify_regime(
-        price_change_pct=-2.55,
-        vix=22.1,
+        price_change_pct=-2.555,
+        vix=22.14,
         news_count=105,
-        sentiment=-0.80
+        sentiment=-0.804
     )
 
     expected_prompt = REGIME_PROMPT.format(
-        price_change_pct=-2.55,
+        price_change_pct=-2.56,
         vix=22.1,
         news_count=105,
         sentiment=-0.80

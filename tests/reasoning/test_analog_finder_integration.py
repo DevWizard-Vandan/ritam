@@ -1,7 +1,7 @@
-import pytest
 from unittest.mock import patch
 
 from src.reasoning.analog_finder import find_analogs
+
 
 @patch('src.reasoning.analog_finder.read_candles')
 def test_find_analogs_integration(mock_read_candles):
@@ -28,6 +28,8 @@ def test_find_analogs_integration(mock_read_candles):
 
     # Assert returned list has at most top_n items
     assert len(results) <= top_n
+    assert len(results) > 0, "Expected at least one analog result"
+    assert mock_read_candles.called, "Expected read_candles to be called"
 
     # Assert each result has keys: start_date, end_date, similarity_score, next_5day_return
     for result in results:
