@@ -9,6 +9,7 @@ import backtrader as bt
 import pandas as pd
 
 from src.data.db import read_candles
+from src.utils.date_utils import normalize_date_bounds
 
 
 @dataclass
@@ -73,19 +74,13 @@ def _candles_to_dataframe(candles: list[dict[str, Any]]) -> pd.DataFrame:
     return frame
 
 
-def _normalize_date_bounds(start_date: str, end_date: str) -> tuple[str, str]:
-    normalized_start = f"{start_date}T00:00:00" if "T" not in start_date else start_date
-    normalized_end = f"{end_date}T23:59:59" if "T" not in end_date else end_date
-    return normalized_start, normalized_end
-
-
 def load_nifty_data(
     start_date: str,
     end_date: str,
     symbol: str = "NSE:NIFTY 50",
 ) -> bt.feeds.PandasData:
     """Load Nifty candles from SQLite and return a Backtrader feed."""
-    normalized_start, normalized_end = _normalize_date_bounds(start_date, end_date)
+    normalized_start, normalized_end = normalize_date_bounds(start_date, end_date)
     candles = read_candles(
         symbol=symbol,
         from_date=normalized_start,
