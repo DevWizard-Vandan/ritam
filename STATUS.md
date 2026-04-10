@@ -1,5 +1,5 @@
 # RITAM — Project Status
-# Last Updated: April 9, 2026 — Analog finder reviewed fixes (daily collapse + symbol/date range)
+# Last Updated: April 10, 2026 — RL trading environment + PPO trainer (task_007_rl_agent request)
 # Updating Agent: Codex (feature/backtesting-engine)
 
 ---
@@ -37,6 +37,9 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 - [x] src/reasoning/analog_finder.py — DB-driven historical window matcher (cosine/DTW) with next-5-day outcome
 - [x] tests/reasoning/test_analog_finder.py — mocked unit tests for analog matching logic
 - [x] src/reasoning/analog_finder.py — review fixes: intraday→daily collapse, symbol param, bounded history range
+- [x] src/rl/trading_env.py — Gymnasium NiftyTradingEnv (20-candle normalized OHLCV, discrete actions, PnL reward)
+- [x] src/rl/trainer.py — PPO training pipeline with DB candle loader and model save to models/ppo_nifty.zip
+- [x] tests/rl/test_trading_env.py — synthetic-candle unit tests for reset/step/invalid action/date normalization
 
 ---
 
@@ -53,7 +56,8 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 ## 📋 Up Next (Assign These in Order)
 1. task_006 — Multi-agent orchestrator [Claude Code]
 2. task_007 — Feedback loop [Claude Code]
-3. task_010 — Gemma reasoning layer (after Ollama installed) [Claude Code]
+3. task_008 — RL weight updater [Claude Code]
+4. task_010 — Gemma reasoning layer (after Ollama installed) [Claude Code]
 
 ---
 
