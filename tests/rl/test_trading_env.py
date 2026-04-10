@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from src.rl.trading_env import NiftyTradingEnv
 from src.rl.trainer import _load_candles_dataframe
@@ -69,11 +70,8 @@ def test_invalid_action_raises_no_error_and_behaves_like_hold():
 def test_env_raises_when_rows_are_not_greater_than_window_size():
     frame = _synthetic_candles_frame(rows=20)
 
-    try:
+    with pytest.raises(ValueError, match="greater than window_size"):
         NiftyTradingEnv(candles=frame)
-        assert False, "Expected ValueError for insufficient candles"
-    except ValueError as exc:
-        assert "greater than window_size" in str(exc)
 
 
 def test_load_candles_dataframe_normalizes_date_bounds(monkeypatch):

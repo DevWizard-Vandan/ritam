@@ -37,8 +37,8 @@ class NiftyTradingEnv(gym.Env):
 
         self.action_space = spaces.Discrete(3)
         self.observation_space = spaces.Box(
-            low=-10.0,
-            high=10.0,
+            low=-np.inf,
+            high=np.inf,
             shape=(self.window_size, len(required_columns)),
             dtype=np.float32,
         )
@@ -49,7 +49,8 @@ class NiftyTradingEnv(gym.Env):
     def _get_observation(self) -> np.ndarray:
         window = self.candles.iloc[self._current_step - self.window_size : self._current_step].copy()
         means = window.mean(axis=0)
-        stds = window.std(axis=0).replace(0.0, 1.0)
+        stds = window.std(axis=0, ddof=0).replace(0.0, 1.0)
+        stds = stds.fillna(1.0)
         normalized = (window - means) / stds
         return normalized.to_numpy(dtype=np.float32)
 
@@ -63,12 +64,13 @@ class NiftyTradingEnv(gym.Env):
         return observation, {}
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        if action not in {0, 1, 2}:
+            action = 0  # treat unknown actions as hold
+
         if action == 1:
             self._position = 1
         elif action == 2:
             self._position = -1
-        else:
-            self._position = self._position if action == 0 else self._position
 
         prev_close = float(self.candles.iloc[self._current_step - 1]["close"])
         next_close = float(self.candles.iloc[self._current_step]["close"])

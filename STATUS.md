@@ -1,5 +1,5 @@
 # RITAM — Project Status
-# Last Updated: April 10, 2026 — RL trading environment + PPO trainer (task_007_rl_agent request)
+# Last Updated: April 10, 2026 — RL env/trainer review fixes applied (Gym bounds, std NaN guard, shared date utils)
 # Updating Agent: Codex (feature/backtesting-engine)
 
 ---
