@@ -1,6 +1,6 @@
 # RITAM — Project Status
-# Last Updated: April 10, 2026 — RL env/trainer review fixes applied (Gym bounds, std NaN guard, shared date utils)
-# Updating Agent: Codex (feature/backtesting-engine)
+# Last Updated: April 10, 2026 — task_006 orchestrator scaffold added (MarketOrchestrator + mocked tests)
+# Updating Agent: Codex (work)
 
 ---
 
@@ -40,12 +40,13 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 - [x] src/rl/trading_env.py — Gymnasium NiftyTradingEnv (20-candle normalized OHLCV, discrete actions, PnL reward)
 - [x] src/rl/trainer.py — PPO training pipeline with DB candle loader and model save to models/ppo_nifty.zip
 - [x] tests/rl/test_trading_env.py — synthetic-candle unit tests for reset/step/invalid action/date normalization
+- [x] src/orchestrator/agent.py — MarketOrchestrator run_cycle (news→sentiment→regime→analogs) with buy/sell/hold signal logic
+- [x] tests/orchestrator/test_agent.py — mocked unit tests for result shape, signal decisions, and empty-headline fallback
 
 ---
 
 ## 🔄 In Progress
-- task_005.1 — backtest engine edge cases [Jules]
-- task_005.2 — reasoning integration tests [Jules]
+- task_006 — multi-agent orchestrator foundation [Codex]
 
 ---
 
@@ -55,10 +56,10 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 ---
 
 ## 📋 Up Next (Assign These in Order)
-1. task_006 — Multi-agent orchestrator [Claude Code]
-2. task_007 — Feedback loop [Claude Code]
-3. task_008 — RL weight updater [Claude Code]
-4. task_010 — Gemma reasoning layer (after Ollama installed) [Claude Code]
+1. task_007 — Feedback loop [Claude Code]
+2. task_008 — RL weight updater [Claude Code]
+3. task_010 — Gemma reasoning layer (after Ollama installed) [Claude Code]
+4. task_011 — Analog agent integration [Claude Code]
 
 ---
 
@@ -76,7 +77,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 | main     | Clean  | —  |
 | feature/backtesting-engine | task_005 complete (backtesting engine) | pending |
 | feature/tests-backtest-edge-cases | task_005.1 complete (backtest engine edge case tests) | pending |
-| feature/reasoning-integration-tests | reasoning integration tests added | pending |
+| work | task_006 foundation (orchestrator agent scaffold + tests) | pending |
 
 ---
 
