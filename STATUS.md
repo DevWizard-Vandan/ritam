@@ -42,6 +42,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 
 ## 🔄 In Progress
 - task_005.1 — backtest engine edge cases [Jules]
+- task_005.2 — reasoning integration tests [Jules]
 
 ---
 
@@ -71,6 +72,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into local database.
 | main     | Clean  | —  |
 | feature/backtesting-engine | task_005 complete (backtesting engine) | pending |
 | feature/tests-backtest-edge-cases | task_005.1 complete (backtest engine edge case tests) | pending |
+| feature/reasoning-integration-tests | reasoning integration tests added | pending |
 
 ---
 
