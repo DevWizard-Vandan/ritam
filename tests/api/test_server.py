@@ -9,7 +9,7 @@ def client():
     with patch("src.data.db.read_candles", return_value=[]), \
          patch("src.data.db.get_connection"):
         from src.api.server import app
-        from fastapi.testclient import TestClient
+        from starlette.testclient import TestClient
         return TestClient(app)
 
 
