@@ -9,6 +9,7 @@ import pytest
 from src.backtest.engine import (
     BacktestResult,
     SimpleMovingAverageCrossover,
+    _calculate_cagr,
     load_nifty_data,
     run_backtest,
 )
@@ -58,19 +59,21 @@ def test_load_nifty_data_normalizes_date_bounds_before_query(monkeypatch):
     assert captured["to_date"] == "2026-01-31T23:59:59"
 
 
-def test_load_nifty_data_raises_when_no_data(monkeypatch):
+def test_load_nifty_data_raises_valueerror_when_db_returns_no_candles(monkeypatch):
     monkeypatch.setattr("src.backtest.engine.read_candles", lambda **_: [])
 
     with pytest.raises(ValueError, match="No candle data"):
         load_nifty_data(start_date="2026-01-01", end_date="2026-01-31")
 
 
-def test_run_backtest_returns_backtest_result(monkeypatch):
+def test_run_backtest_returns_backtest_result_with_trade_log_and_metrics_keys(monkeypatch):
     monkeypatch.setattr("src.backtest.engine.read_candles", lambda **_: _synthetic_candles())
 
     result = run_backtest(start_date="2026-01-01", end_date="2026-01-31")
 
     assert isinstance(result, BacktestResult)
+    assert hasattr(result, "trade_log")
+    assert hasattr(result, "metrics")
     assert isinstance(result.trade_log, list)
     assert isinstance(result.metrics, dict)
 
@@ -92,3 +95,20 @@ def test_synthetic_candles_support_rows_over_20():
 
     assert len(candles) == 25
     assert candles[24]["close"] == 100 + (24 % 5)
+
+
+def test_run_backtest_raises_valueerror_when_empty_candle_list_passed(monkeypatch):
+    monkeypatch.setattr("src.backtest.engine.read_candles", lambda **_: [])
+
+    with pytest.raises(ValueError, match="No candle data"):
+        run_backtest(start_date="2026-01-01", end_date="2026-01-31")
+
+
+def test_calculate_cagr_returns_zero_when_start_equals_end_date():
+    cagr = _calculate_cagr(
+        initial_value=100000.0,
+        final_value=110000.0,
+        start="2026-01-01T10:00:00",
+        end="2026-01-01T10:00:00",
+    )
+    assert cagr == 0.0
