@@ -19,7 +19,7 @@ def main():
     args = parser.parse_args()
 
     symbols = ["NSE:NIFTY 50", "NSE:NIFTY BANK"]
-    start_date = "2000-01-01"
+    start_date = "2010-01-01"
     end_date = "2024-12-31"
 
     if args.dry_run:
