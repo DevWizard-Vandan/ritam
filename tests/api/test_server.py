@@ -1,6 +1,5 @@
 """Basic tests for FastAPI server endpoints."""
 import pytest
-from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 
 
@@ -15,7 +14,6 @@ def client():
 
 def test_accuracy_endpoint_returns_dict(client):
     mock_execute = MagicMock()
-    # First call → total=10, Second call → correct=7
     mock_execute.fetchone.side_effect = [[10], [7]]
 
     with patch("src.api.server.get_connection") as mock_conn:
@@ -26,7 +24,38 @@ def test_accuracy_endpoint_returns_dict(client):
     data = resp.json()
     assert isinstance(data, dict)
 
+
+def test_feedback_accuracy_endpoint_returns_dict(client):
+    with patch("src.api.server.tracker.get_accuracy_stats", return_value={"total": 0, "correct": 0}):
+        resp = client.get("/api/feedback/accuracy")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"total": 0, "correct": 0}
+
+
 def test_candles_endpoint_returns_200(client):
     with patch("src.data.db.read_candles", return_value=[]):
         resp = client.get("/api/candles")
         assert resp.status_code == 200
+
+
+def test_feedback_outcome_valid_payload_returns_200(client):
+    with patch("src.api.server.tracker.record_outcome") as mock_record_outcome:
+        resp = client.post(
+            "/api/feedback/outcome",
+            json={"timestamp": "2026-04-11T09:20:00+05:30", "actual_return_pct": 0.2},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"
+    mock_record_outcome.assert_called_once()
+
+
+def test_feedback_outcome_unknown_timestamp_returns_404(client):
+    with patch("src.api.server.tracker.record_outcome", side_effect=ValueError("No prediction found for timestamp: missing")):
+        resp = client.post(
+            "/api/feedback/outcome",
+            json={"timestamp": "missing", "actual_return_pct": -0.1},
+        )
+
+    assert resp.status_code == 404

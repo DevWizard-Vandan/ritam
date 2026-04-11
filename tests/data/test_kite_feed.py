@@ -3,6 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from unittest.mock import patch
+import warnings
+
+warnings.filterwarnings("ignore", message="\nPyarrow will become a required dependency of pandas", category=DeprecationWarning)
 
 import pandas as pd
 import pytz
