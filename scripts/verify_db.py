@@ -1,4 +1,6 @@
-import sys
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 from datetime import datetime
 
 from src.data.db import get_connection, init_db
