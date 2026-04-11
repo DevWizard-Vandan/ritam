@@ -21,14 +21,19 @@ MARKET_CLOSE = time(15, 30)
 
 
 def _get_token_for_symbol(symbol: str) -> int:
-    if symbol == "NSE:NIFTY BANK":
-        return BANKNIFTY_TOKEN
-    return NIFTY_TOKEN
+    _TOKEN_MAP = {
+        "NSE:NIFTY 50": NIFTY_TOKEN,
+        "NSE:NIFTY BANK": BANKNIFTY_TOKEN,
+    }
+    if symbol not in _TOKEN_MAP:
+        raise ValueError(f"Unsupported symbol: '{symbol}'. Supported: {list(_TOKEN_MAP.keys())}")
+    return _TOKEN_MAP[symbol]
 
 
-def _candle_to_record(candle: dict) -> dict:
+def _candle_to_record(candle: dict, symbol: str) -> dict:
     """Normalize a Kite-shaped candle into DB payload format."""
     return {
+        "symbol": symbol,
         "timestamp_ist": candle["date"].astimezone(IST).isoformat(),
         "open": candle["open"],
         "high": candle["high"],
@@ -45,6 +50,9 @@ def fetch_historical_candles(
     interval: str = "day",
 ) -> int:
     """Fetch OHLCV candles and store them in SQLite."""
+    from src.data.db import init_db
+    init_db()
+
     kite = get_client()
 
     if from_date:
@@ -72,7 +80,7 @@ def fetch_historical_candles(
         to_date=end,
         interval=interval,
     )
-    records = [_candle_to_record(candle) for candle in candles_raw]
+    records = [_candle_to_record(candle, symbol) for candle in candles_raw]
 
     if not records:
         logger.warning("No historical candles returned for {}", symbol)
@@ -108,7 +116,7 @@ def fetch_intraday_candles(symbol: str = DB_SYMBOL) -> int:
         to_date=to_time,
         interval="minute",
     )
-    records = [_candle_to_record(candle) for candle in candles_raw]
+    records = [_candle_to_record(candle, symbol) for candle in candles_raw]
 
     if not records:
         logger.warning("No intraday minute candles returned for {}", symbol)

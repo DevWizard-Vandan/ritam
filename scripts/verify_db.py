@@ -1,9 +1,10 @@
 import sys
 from datetime import datetime
 
-from src.data.db import get_connection
+from src.data.db import get_connection, init_db
 
 def main():
+    init_db()
     symbols = ["NSE:NIFTY 50", "NSE:NIFTY BANK"]
     total_db_rows = 0
 
@@ -23,18 +24,29 @@ def main():
             total_db_rows += count
 
             # Check for gaps > 5 days
-            timestamps = conn.execute(
-                "SELECT timestamp_ist FROM candles WHERE symbol=? ORDER BY timestamp_ist ASC",
+            gap_rows = conn.execute(
+                """
+                SELECT prev_ts, timestamp_ist,
+                       CAST(julianday(timestamp_ist) - julianday(prev_ts) AS INTEGER) AS gap_days
+                FROM (
+                    SELECT timestamp_ist,
+                           LAG(timestamp_ist) OVER (ORDER BY timestamp_ist ASC) AS prev_ts
+                    FROM candles
+                    WHERE symbol=?
+                      AND time(timestamp_ist) = '00:00:00'
+                )
+                WHERE prev_ts IS NOT NULL
+                  AND julianday(timestamp_ist) - julianday(prev_ts) > 5
+                ORDER BY timestamp_ist ASC
+                """,
                 (symbol,)
             ).fetchall()
-
-            gaps = []
-            for i in range(1, len(timestamps)):
-                prev_date = datetime.fromisoformat(timestamps[i-1][0])
-                curr_date = datetime.fromisoformat(timestamps[i][0])
-                delta = curr_date - prev_date
-                if delta.days > 5:
-                    gaps.append((prev_date.strftime('%Y-%m-%d'), curr_date.strftime('%Y-%m-%d'), delta.days))
+            gaps = [
+                (datetime.fromisoformat(r[0]).strftime('%Y-%m-%d'),
+                 datetime.fromisoformat(r[1]).strftime('%Y-%m-%d'),
+                 r[2])
+                for r in gap_rows
+            ]
 
             print(f"{symbol}: {count} total rows")
             print(f"  Earliest date: {min_date}")

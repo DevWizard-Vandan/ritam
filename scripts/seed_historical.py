@@ -1,10 +1,10 @@
 import argparse
-import sys
 
 from src.data.kite_feed import fetch_historical_candles
-from src.data.db import get_connection
+from src.data.db import get_connection, init_db
 
 def main():
+    init_db()
     parser = argparse.ArgumentParser(description="Seed historical daily candles for DB.")
     parser.add_argument("--dry-run", action="store_true", help="Print what would be fetched without writing.")
     args = parser.parse_args()
