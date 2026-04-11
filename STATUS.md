@@ -32,6 +32,8 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 - [x] `src/data/news_fetcher.py` - NewsAPI + RSS ingestion with APScheduler job and SQLite `news_raw` persistence
 - [x] `tests/data/test_news_fetcher.py` - mocked unit tests for news ingestion pipeline
 - [x] Initial test suite - Phase 1
+- [x] `scripts/seed_historical.py` - Historical DB seeding script
+- [x] `scripts/verify_db.py` - DB verification script
 - [x] `src/backtest/engine.py` - Backtrader engine with SMA crossover, trade log, and performance metrics
 - [x] `tests/backtest/test_engine.py` - synthetic-candle unit tests (no DB calls)
 - [x] `src/reasoning/analog_finder.py` - DB-driven historical window matcher (cosine/DTW) with next-5-day outcome
