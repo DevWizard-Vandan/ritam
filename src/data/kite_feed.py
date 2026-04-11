@@ -86,14 +86,38 @@ def fetch_historical_candles(
     )
 
     candles_raw: list = []
+    _yf_fallback: "YFinanceKiteClient | None" = None
+
+    try:
+        from kiteconnect.exceptions import KiteException as _KiteException
+    except Exception:  # kiteconnect not installed or different layout
+        _KiteException = Exception  # type: ignore[assignment,misc]
+
     for chunk_start, chunk_end in _date_chunks(start, end):
         logger.info("Fetching chunk {} → {}", chunk_start.date(), chunk_end.date())
-        chunk = kite.historical_data(
-            instrument_token=token,
-            from_date=chunk_start,
-            to_date=chunk_end,
-            interval=interval,
-        )
+        try:
+            chunk = kite.historical_data(
+                instrument_token=token,
+                from_date=chunk_start,
+                to_date=chunk_end,
+                interval=interval,
+            )
+        except _KiteException as exc:
+            logger.warning(
+                "Kite historical_data failed for chunk {} → {}: {}. Falling back to yfinance.",
+                chunk_start.date(),
+                chunk_end.date(),
+                exc,
+            )
+            from src.data.kite_client import YFinanceKiteClient
+            if _yf_fallback is None:
+                _yf_fallback = YFinanceKiteClient()
+            chunk = _yf_fallback.historical_data(
+                instrument_token=token,
+                from_date=chunk_start,
+                to_date=chunk_end,
+                interval=interval,
+            )
         if not chunk:
             logger.warning(
                 "Empty response for chunk {} → {}; some candles may be missing",
