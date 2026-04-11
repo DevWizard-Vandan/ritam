@@ -1,8 +1,8 @@
 """Unit tests for kite_feed.py with mocked yfinance-backed client calls."""
 from __future__ import annotations
 
-from datetime import datetime
-from unittest.mock import patch
+from datetime import datetime, timedelta
+from unittest.mock import call, patch
 import warnings
 
 warnings.filterwarnings("ignore", message="\nPyarrow will become a required dependency of pandas", category=DeprecationWarning)
@@ -11,6 +11,7 @@ import pandas as pd
 import pytz
 
 from src.data import kite_feed
+from src.data.kite_feed import _date_chunks
 from src.data.kite_client import YFinanceKiteClient
 
 IST = pytz.timezone("Asia/Kolkata")
@@ -71,7 +72,8 @@ def test_fetch_historical_candles_downloads_and_writes_daily_data():
     ), patch(
         "src.data.kite_feed.write_candles"
     ) as mock_write:
-        count = kite_feed.fetch_historical_candles()
+        # Use a narrow window (< 1800 days) so only one chunk is produced.
+        count = kite_feed.fetch_historical_candles(from_date="2026-04-07", to_date="2026-04-09")
 
     assert count == 2
     mock_write.assert_called_once()
@@ -88,10 +90,31 @@ def test_fetch_historical_candles_returns_zero_when_source_empty():
     ), patch(
         "src.data.kite_feed.write_candles"
     ) as mock_write:
-        count = kite_feed.fetch_historical_candles()
+        # Narrow window to keep the test fast (still exercises the zero-record path).
+        count = kite_feed.fetch_historical_candles(from_date="2026-04-07", to_date="2026-04-09")
 
     assert count == 0
     mock_write.assert_not_called()
+
+
+def test_fetch_historical_candles_chunks_large_date_range():
+    """fetch_historical_candles splits a 3600-day range into two 1800-day chunks."""
+    start = IST.localize(datetime(2020, 1, 1))
+    # 3600-day span → 2 chunks of 1800 days each.
+    end_date = (start + timedelta(days=3600)).strftime("%Y-%m-%d")
+
+    # Each chunk call returns 2 candles; expect 4 total across 2 chunks.
+    with patch("src.data.kite_feed.get_client", return_value=YFinanceKiteClient()), patch(
+        "src.data.kite_client.yf.download", return_value=_daily_frame()
+    ), patch(
+        "src.data.kite_feed.write_candles"
+    ) as mock_write:
+        count = kite_feed.fetch_historical_candles(from_date="2020-01-01", to_date=end_date)
+
+    assert count == 4
+    mock_write.assert_called_once()
+    _, candles = mock_write.call_args.args
+    assert len(candles) == 4
 
 
 def test_fetch_intraday_candles_downloads_market_window_data():
@@ -145,3 +168,57 @@ def test_start_live_feed_registers_60_second_job_and_starts_scheduler():
     assert kwargs["trigger"] == "cron"
     assert kwargs["second"] == "0"
     scheduler.start.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _date_chunks tests
+# ---------------------------------------------------------------------------
+
+def test_date_chunks_single_chunk_when_range_within_limit():
+    start = IST.localize(datetime(2024, 1, 1))
+    end = IST.localize(datetime(2024, 6, 1))
+    chunks = list(_date_chunks(start, end))
+    assert len(chunks) == 1
+    assert chunks[0] == (start, end)
+
+
+def test_date_chunks_splits_exactly_at_boundary():
+    start = IST.localize(datetime(2020, 1, 1))
+    # After chunk 1, cursor = start+1801. We need end > start+1801 (i.e. >= start+1802)
+    # to satisfy cursor < end and produce a second chunk.
+    end = start + timedelta(days=1802)
+    chunks = list(_date_chunks(start, end, chunk_days=1800))
+    assert len(chunks) == 2
+    # First chunk ends at start + 1800 days.
+    assert chunks[0][1] == start + timedelta(days=1800)
+    # Second chunk starts one day after the first ends.
+    assert chunks[1][0] == start + timedelta(days=1801)
+    assert chunks[1][1] == end
+
+
+def test_date_chunks_consecutive_chunks_are_contiguous():
+    start = IST.localize(datetime(2000, 1, 1))
+    end = IST.localize(datetime(2025, 1, 1))
+    chunks = list(_date_chunks(start, end, chunk_days=1800))
+    assert len(chunks) >= 2
+    for i in range(1, len(chunks)):
+        prev_end = chunks[i - 1][1]
+        curr_start = chunks[i][0]
+        assert curr_start == prev_end + timedelta(days=1)
+
+
+def test_date_chunks_last_chunk_ends_at_end():
+    start = IST.localize(datetime(2000, 1, 1))
+    end = IST.localize(datetime(2024, 12, 31))
+    chunks = list(_date_chunks(start, end, chunk_days=1800))
+    assert chunks[-1][1] == end
+
+
+def test_date_chunks_covers_full_historical_seed_range():
+    """The canonical seed range (2000-01-01 to 2024-12-31) must stay below 2000 days per chunk."""
+    start = IST.localize(datetime(2000, 1, 1))
+    end = IST.localize(datetime(2024, 12, 31))
+    chunks = list(_date_chunks(start, end))
+    for chunk_start, chunk_end in chunks:
+        span = (chunk_end - chunk_start).days
+        assert span <= 1800, f"Chunk span {span} exceeds 1800-day chunk size (Kite limit is 2000 days)"

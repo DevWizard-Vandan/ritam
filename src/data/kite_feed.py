@@ -1,7 +1,7 @@
 """OHLCV data fetcher for historical + live candle ingestion via yfinance-backed Kite client."""
 from __future__ import annotations
 
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -18,6 +18,15 @@ BANKNIFTY_TOKEN = 260105
 DB_SYMBOL = settings.NIFTY_SYMBOL
 MARKET_OPEN = time(9, 15)
 MARKET_CLOSE = time(15, 30)
+
+
+def _date_chunks(start: datetime, end: datetime, chunk_days: int = 1800):
+    """Yield (chunk_start, chunk_end) pairs to stay below the 2000-day API limit."""
+    cursor = start
+    while cursor < end:
+        chunk_end = min(cursor + timedelta(days=chunk_days), end)
+        yield cursor, chunk_end
+        cursor = chunk_end + timedelta(days=1)
 
 
 def _get_token_for_symbol(symbol: str) -> int:
@@ -74,12 +83,16 @@ def fetch_historical_candles(
         token
     )
 
-    candles_raw = kite.historical_data(
-        instrument_token=token,
-        from_date=start,
-        to_date=end,
-        interval=interval,
-    )
+    candles_raw: list = []
+    for chunk_start, chunk_end in _date_chunks(start, end):
+        logger.info("Fetching chunk {} → {}", chunk_start.date(), chunk_end.date())
+        chunk = kite.historical_data(
+            instrument_token=token,
+            from_date=chunk_start,
+            to_date=chunk_end,
+            interval=interval,
+        )
+        candles_raw.extend(chunk)
     records = [_candle_to_record(candle, symbol) for candle in candles_raw]
 
     if not records:
