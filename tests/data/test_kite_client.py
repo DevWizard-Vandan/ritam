@@ -28,10 +28,15 @@ def _sample_frame() -> pd.DataFrame:
 
 
 def test_get_client_returns_compatibility_adapter():
-    with patch("src.config.settings.KITE_API_KEY", "unused-key"), patch(
-        "src.config.settings.KITE_ACCESS_TOKEN", "seed-token"
-    ):
+    with patch("src.data.kite_client.settings") as mock_settings:
+        mock_settings.KITE_API_KEY = "unused-key"
+        mock_settings.KITE_ACCESS_TOKEN = "seed-token"
+
         reload(kite_client)
+
+        # apply the mock onto the reloaded module
+        kite_client.settings = mock_settings
+
         client = kite_client.get_client()
 
     assert isinstance(client, kite_client.YFinanceKiteClient)

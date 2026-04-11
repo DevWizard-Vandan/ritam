@@ -14,9 +14,16 @@ from src.data.kite_client import get_client
 IST = pytz.timezone(settings.TIMEZONE)
 FETCH_TICKER = "^NSEI"
 NIFTY_TOKEN = 256265
+BANKNIFTY_TOKEN = 260105
 DB_SYMBOL = settings.NIFTY_SYMBOL
 MARKET_OPEN = time(9, 15)
 MARKET_CLOSE = time(15, 30)
+
+
+def _get_token_for_symbol(symbol: str) -> int:
+    if symbol == "NSE:NIFTY BANK":
+        return BANKNIFTY_TOKEN
+    return NIFTY_TOKEN
 
 
 def _candle_to_record(candle: dict) -> dict:
@@ -31,22 +38,39 @@ def _candle_to_record(candle: dict) -> dict:
     }
 
 
-def fetch_historical_candles(symbol: str = DB_SYMBOL) -> int:
-    """Fetch daily OHLCV from 2000-01-01 to now and store it in SQLite."""
+def fetch_historical_candles(
+    symbol: str = DB_SYMBOL,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    interval: str = "day",
+) -> int:
+    """Fetch OHLCV candles and store them in SQLite."""
     kite = get_client()
-    start = IST.localize(datetime(2000, 1, 1, 0, 0, 0))
-    end = datetime.now(IST)
+
+    if from_date:
+        start = IST.localize(datetime.strptime(from_date, "%Y-%m-%d"))
+    else:
+        start = IST.localize(datetime(2000, 1, 1, 0, 0, 0))
+
+    if to_date:
+        end = IST.localize(datetime.strptime(to_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59))
+    else:
+        end = datetime.now(IST)
+
+    token = _get_token_for_symbol(symbol)
+
     logger.info(
-        "Fetching historical daily candles via {} for DB symbol {}",
-        FETCH_TICKER,
+        "Fetching historical {} candles for DB symbol {} (token {})",
+        interval,
         symbol,
+        token
     )
 
     candles_raw = kite.historical_data(
-        instrument_token=NIFTY_TOKEN,
+        instrument_token=token,
         from_date=start,
         to_date=end,
-        interval="day",
+        interval=interval,
     )
     records = [_candle_to_record(candle) for candle in candles_raw]
 
