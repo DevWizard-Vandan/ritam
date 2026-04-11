@@ -19,6 +19,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 - [x] `src/config/settings.py` - env loader
 - [x] `src/data/kite_client.py` - live Kite Connect path enabled when credentials exist, with yfinance fallback (`^NSEI` / `^NSEBANK`) and multi-index candle parsing fix
 - [x] `scripts/seed_historical.py` and `scripts/verify_db.py` - repo-root bootstrap added so `python scripts/...` works without manual `PYTHONPATH`
+- [x] `src/data/kite_feed.py` - real Kite historical seeding now chunks long day ranges into provider-safe windows
 - [x] `src/data/db.py` - SQLite helpers (write/read candles)
 - [x] `src/data/kite_feed.py` - OHLCV fetcher boilerplate
 - [x] `src/sentiment/preprocessor.py` - headline cleaner
