@@ -53,6 +53,19 @@ def _resolve_ticker(instrument_token: int) -> str:
     return ticker
 
 
+def _has_real_kite_credentials() -> bool:
+    required_values = (
+        settings.KITE_API_KEY.strip(),
+        settings.KITE_ACCESS_TOKEN.strip(),
+    )
+    return all(value and not value.lower().startswith("your_") for value in required_values)
+
+
+def _extract_scalar(value: Any) -> Any:
+    """Handle both flat and multi-index yfinance rows."""
+    return value.iloc[0] if hasattr(value, "iloc") else value
+
+
 class YFinanceKiteClient:
     """Small adapter that mimics the Kite methods used by the repo today."""
 
@@ -114,14 +127,19 @@ class YFinanceKiteClient:
         candles: list[dict[str, Any]] = []
         for timestamp, row in frame.iterrows():
             candle_time = _coerce_datetime(timestamp)
+            open_value = _extract_scalar(row["Open"])
+            high_value = _extract_scalar(row["High"])
+            low_value = _extract_scalar(row["Low"])
+            close_value = _extract_scalar(row["Close"])
+            vol = _extract_scalar(row["Volume"])
             candles.append(
                 {
                     "date": candle_time,
-                    "open": float(row["Open"]),
-                    "high": float(row["High"]),
-                    "low": float(row["Low"]),
-                    "close": float(row["Close"]),
-                    "volume": 0 if pd.isna(row["Volume"]) else int(row["Volume"]),
+                    "open": float(open_value),
+                    "high": float(high_value),
+                    "low": float(low_value),
+                    "close": float(close_value),
+                    "volume": 0 if pd.isna(vol) else int(vol),
                 }
             )
 
@@ -134,11 +152,19 @@ class YFinanceKiteClient:
         return candles
 
 
-def get_client() -> YFinanceKiteClient:
-    """Return a Kite-compatible client backed by yfinance."""
+def get_client() -> Any:
+    """Return a live Kite client when configured, otherwise yfinance fallback."""
+    if _has_real_kite_credentials():
+        from kiteconnect import KiteConnect
+
+        kite = KiteConnect(api_key=settings.KITE_API_KEY)
+        kite.set_access_token(settings.KITE_ACCESS_TOKEN)
+        logger.info("Using real Kite Connect client (live data)")
+        return kite
+
     client = YFinanceKiteClient(
         api_key=settings.KITE_API_KEY,
         access_token=settings.KITE_ACCESS_TOKEN,
     )
-    logger.info("Using yfinance-backed Kite compatibility client")
+    logger.info("Using yfinance fallback (no Kite credentials found)")
     return client

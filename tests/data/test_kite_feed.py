@@ -11,6 +11,7 @@ import pandas as pd
 import pytz
 
 from src.data import kite_feed
+from src.data.kite_client import YFinanceKiteClient
 
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -65,7 +66,9 @@ def _minute_frame() -> pd.DataFrame:
 
 
 def test_fetch_historical_candles_downloads_and_writes_daily_data():
-    with patch("src.data.kite_client.yf.download", return_value=_daily_frame()), patch(
+    with patch("src.data.kite_feed.get_client", return_value=YFinanceKiteClient()), patch(
+        "src.data.kite_client.yf.download", return_value=_daily_frame()
+    ), patch(
         "src.data.kite_feed.write_candles"
     ) as mock_write:
         count = kite_feed.fetch_historical_candles()
@@ -80,7 +83,9 @@ def test_fetch_historical_candles_downloads_and_writes_daily_data():
 def test_fetch_historical_candles_returns_zero_when_source_empty():
     empty_frame = pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
 
-    with patch("src.data.kite_client.yf.download", return_value=empty_frame), patch(
+    with patch("src.data.kite_feed.get_client", return_value=YFinanceKiteClient()), patch(
+        "src.data.kite_client.yf.download", return_value=empty_frame
+    ), patch(
         "src.data.kite_feed.write_candles"
     ) as mock_write:
         count = kite_feed.fetch_historical_candles()
@@ -93,6 +98,8 @@ def test_fetch_intraday_candles_downloads_market_window_data():
     _FrozenDateTime.frozen_now = IST.localize(datetime(2026, 4, 9, 10, 20))
 
     with patch("src.data.kite_feed.datetime", _FrozenDateTime), patch(
+        "src.data.kite_feed.get_client", return_value=YFinanceKiteClient()
+    ), patch(
         "src.data.kite_client.yf.download", return_value=_minute_frame()
     ) as mock_download, patch("src.data.kite_feed.write_candles") as mock_write:
         count = kite_feed.fetch_intraday_candles()
