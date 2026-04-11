@@ -8,7 +8,7 @@ import asyncio
 import json
 from datetime import datetime
 from pydantic import BaseModel
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from src.api.websocket_manager import WebSocketManager
 from src.data.db import read_candles, get_connection
@@ -32,16 +32,18 @@ class OutcomePayload(BaseModel):
     actual_return_pct: float
 
 
-@app.get("/accuracy")
+@app.get("/api/feedback/accuracy")
 def get_feedback_accuracy():
     return tracker.get_accuracy_stats()
 
 
-@app.post("/outcome")
+@app.post("/api/feedback/outcome")
 def post_outcome(payload: OutcomePayload):
-    tracker.record_outcome(timestamp=payload.timestamp, actual_return_pct=payload.actual_return_pct)
+    try:
+        tracker.record_outcome(timestamp=payload.timestamp, actual_return_pct=payload.actual_return_pct)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"status": "ok", "timestamp": payload.timestamp}
-
 
 
 @app.get("/api/candles")

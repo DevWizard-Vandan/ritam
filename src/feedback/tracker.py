@@ -11,24 +11,32 @@ class PredictionTracker:
     """Persist predictions and compute accuracy metrics."""
 
     def __init__(self, db_path: str = "data/market.db"):
-        self.db_path = db_path
-        if db_path != ":memory:":
+        self._use_uri = False
+        self._memory_anchor: sqlite3.Connection | None = None
+
+        if db_path == ":memory:":
+            self.db_path = "file:feedback_tracker_test?mode=memory&cache=shared"
+            self._use_uri = True
+            self._memory_anchor = sqlite3.connect(self.db_path, uri=True)
+        else:
+            self.db_path = db_path
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+
         self._init_db()
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
+        conn = sqlite3.connect(self.db_path, uri=self._use_uri)
         try:
-            yield self._conn
+            yield conn
         finally:
-            pass
+            conn.close()
 
     def _init_db(self) -> None:
         with self._connect() as conn:
             conn.execute(
                 """
-                CREATE TABLE IF NOT EXISTS predictions (
+                CREATE TABLE IF NOT EXISTS feedback_predictions (
                     id INTEGER,
                     timestamp TEXT PRIMARY KEY,
                     signal TEXT,
@@ -53,9 +61,10 @@ class PredictionTracker:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT OR REPLACE INTO predictions (
+                INSERT INTO feedback_predictions (
                     timestamp, signal, sentiment_score, regime, analog_similarity
                 ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(timestamp) DO NOTHING
                 """,
                 (timestamp, signal, sentiment_score, regime, analog_similarity),
             )
@@ -63,14 +72,16 @@ class PredictionTracker:
 
     def record_outcome(self, timestamp: str, actual_return_pct: float) -> None:
         with self._connect() as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """
-                UPDATE predictions
+                UPDATE feedback_predictions
                 SET actual_return_pct = ?, resolved = 1
                 WHERE timestamp = ?
                 """,
                 (actual_return_pct, timestamp),
             )
+            if cursor.rowcount == 0:
+                raise ValueError(f"No prediction found for timestamp: {timestamp}")
             conn.commit()
 
     @staticmethod
@@ -94,8 +105,10 @@ class PredictionTracker:
             rows = conn.execute(
                 """
                 SELECT signal, actual_return_pct
-                FROM predictions
-                WHERE resolved = 1 AND actual_return_pct IS NOT NULL
+                FROM feedback_predictions
+                WHERE signal IN ('buy', 'sell', 'hold')
+                  AND resolved = 1
+                  AND actual_return_pct IS NOT NULL
                 """
             ).fetchall()
 
@@ -123,8 +136,6 @@ class PredictionTracker:
         total_error = 0.0
 
         for signal, actual_return_pct in rows:
-            if signal not in by_signal:
-                continue
             by_signal[signal]["total"] += 1
             is_correct = self._is_correct(signal, float(actual_return_pct))
             if is_correct:

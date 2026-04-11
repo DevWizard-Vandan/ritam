@@ -1,11 +1,5 @@
 """Unit tests for the feedback prediction tracker."""
-from pathlib import Path
-import sys
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
 from src.feedback.tracker import PredictionTracker
-
 
 
 def test_record_prediction_stores_correct_fields():
@@ -22,7 +16,7 @@ def test_record_prediction_stores_correct_fields():
         row = conn.execute(
             """
             SELECT timestamp, signal, sentiment_score, regime, analog_similarity, resolved
-            FROM predictions
+            FROM feedback_predictions
             WHERE timestamp = ?
             """,
             ("2026-04-11T09:15:00+05:30",),
@@ -40,7 +34,7 @@ def test_record_outcome_resolves_row():
 
     with tracker._connect() as conn:
         row = conn.execute(
-            "SELECT actual_return_pct, resolved FROM predictions WHERE timestamp = ?",
+            "SELECT actual_return_pct, resolved FROM feedback_predictions WHERE timestamp = ?",
             (timestamp,),
         ).fetchone()
 

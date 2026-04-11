@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import warnings
 
 import numpy as np
+warnings.filterwarnings("ignore", message="\nPyarrow will become a required dependency of pandas", category=DeprecationWarning)
+
 import pandas as pd
 import pytest
 

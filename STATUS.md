@@ -1,5 +1,5 @@
 # RITAM - Project Status
-# Last Updated: April 11, 2026 - prediction feedback tracker added
+# Last Updated: April 11, 2026 - feedback tracker hardening and API route updates
 # Updating Agent: Codex (work)
 
 ---
@@ -46,6 +46,8 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 - [x] `src/feedback/tracker.py` - SQLite-backed prediction/outcome tracker with accuracy stats
 - [x] `tests/feedback/test_tracker.py` - unit tests for prediction recording, outcome resolution, and accuracy metrics
 - [x] `src/api/server.py` - added `/accuracy` and `/outcome` endpoints powered by feedback tracker
+- [x] `src/feedback/tracker.py` - hardened with `feedback_predictions` table, conflict-safe inserts, and missing-outcome guard
+- [x] `src/api/server.py` - moved feedback routes to `/api/feedback/accuracy` and `/api/feedback/outcome` with 404 on unknown timestamp
 
 ---
 

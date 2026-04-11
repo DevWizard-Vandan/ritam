@@ -4,8 +4,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+import warnings
 
 import backtrader as bt
+warnings.filterwarnings("ignore", message="\nPyarrow will become a required dependency of pandas", category=DeprecationWarning)
+
 import pandas as pd
 
 from src.data.db import read_candles
