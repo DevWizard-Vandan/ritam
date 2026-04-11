@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import warnings
 
 warnings.filterwarnings("ignore", message="\nPyarrow will become a required dependency of pandas", category=DeprecationWarning)
@@ -78,6 +78,47 @@ def test_fetch_historical_candles_downloads_and_writes_daily_data():
     symbol, candles = mock_write.call_args.args
     assert symbol == "NSE:NIFTY 50"
     assert candles[0]["open"] == 22200.0
+
+
+def test_fetch_historical_candles_chunks_long_ranges_for_real_kite():
+    mock_kite = MagicMock()
+    mock_kite.__class__.__module__ = "kiteconnect.connect"
+    mock_kite.historical_data.side_effect = [
+        [
+            {
+                "date": IST.localize(datetime(2020, 1, 1, 0, 0)),
+                "open": 100.0,
+                "high": 110.0,
+                "low": 95.0,
+                "close": 105.0,
+                "volume": 1000,
+            }
+        ],
+        [
+            {
+                "date": IST.localize(datetime(2025, 3, 1, 0, 0)),
+                "open": 200.0,
+                "high": 210.0,
+                "low": 195.0,
+                "close": 205.0,
+                "volume": 2000,
+            }
+        ],
+    ]
+
+    with patch("src.data.kite_feed.get_client", return_value=mock_kite), patch(
+        "src.data.kite_feed.write_candles"
+    ) as mock_write:
+        count = kite_feed.fetch_historical_candles(
+            from_date="2020-01-01",
+            to_date="2025-12-31",
+            interval="day",
+        )
+
+    assert count == 2
+    assert mock_kite.historical_data.call_count == 2
+    assert mock_write.call_args.args[1][0]["open"] == 100.0
+    assert mock_write.call_args.args[1][1]["close"] == 205.0
 
 
 def test_fetch_historical_candles_returns_zero_when_source_empty():
