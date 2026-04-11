@@ -1,0 +1,145 @@
+"""SQLite-backed tracker for prediction outcomes and directional accuracy."""
+from __future__ import annotations
+
+import sqlite3
+from pathlib import Path
+from contextlib import contextmanager
+from typing import Any, Iterator
+
+
+class PredictionTracker:
+    """Persist predictions and compute accuracy metrics."""
+
+    def __init__(self, db_path: str = "data/market.db"):
+        self.db_path = db_path
+        if db_path != ":memory:":
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self._init_db()
+
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        try:
+            yield self._conn
+        finally:
+            pass
+
+    def _init_db(self) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS predictions (
+                    id INTEGER,
+                    timestamp TEXT PRIMARY KEY,
+                    signal TEXT,
+                    sentiment_score REAL,
+                    regime TEXT,
+                    analog_similarity REAL,
+                    actual_return_pct REAL,
+                    resolved INTEGER DEFAULT 0
+                )
+                """
+            )
+            conn.commit()
+
+    def record_prediction(
+        self,
+        timestamp: str,
+        signal: str,
+        sentiment_score: float,
+        regime: str,
+        analog_similarity: float,
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO predictions (
+                    timestamp, signal, sentiment_score, regime, analog_similarity
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (timestamp, signal, sentiment_score, regime, analog_similarity),
+            )
+            conn.commit()
+
+    def record_outcome(self, timestamp: str, actual_return_pct: float) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE predictions
+                SET actual_return_pct = ?, resolved = 1
+                WHERE timestamp = ?
+                """,
+                (actual_return_pct, timestamp),
+            )
+            conn.commit()
+
+    @staticmethod
+    def _is_correct(signal: str, actual_return_pct: float) -> bool:
+        if signal == "buy":
+            return actual_return_pct > 0
+        if signal == "sell":
+            return actual_return_pct < 0
+        if signal == "hold":
+            return True
+        return False
+
+    @staticmethod
+    def _error(signal: str, actual_return_pct: float) -> float:
+        if PredictionTracker._is_correct(signal, actual_return_pct):
+            return 0.0
+        return abs(actual_return_pct)
+
+    def get_accuracy_stats(self) -> dict[str, Any]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT signal, actual_return_pct
+                FROM predictions
+                WHERE resolved = 1 AND actual_return_pct IS NOT NULL
+                """
+            ).fetchall()
+
+        total = len(rows)
+        if total == 0:
+            return {
+                "total": 0,
+                "correct": 0,
+                "accuracy_pct": 0.0,
+                "avg_error": 0.0,
+                "by_signal": {
+                    "buy": {"total": 0, "correct": 0, "accuracy_pct": 0.0},
+                    "sell": {"total": 0, "correct": 0, "accuracy_pct": 0.0},
+                    "hold": {"total": 0, "correct": 0, "accuracy_pct": 0.0},
+                },
+            }
+
+        by_signal: dict[str, dict[str, float]] = {
+            "buy": {"total": 0, "correct": 0, "accuracy_pct": 0.0},
+            "sell": {"total": 0, "correct": 0, "accuracy_pct": 0.0},
+            "hold": {"total": 0, "correct": 0, "accuracy_pct": 0.0},
+        }
+
+        correct = 0
+        total_error = 0.0
+
+        for signal, actual_return_pct in rows:
+            if signal not in by_signal:
+                continue
+            by_signal[signal]["total"] += 1
+            is_correct = self._is_correct(signal, float(actual_return_pct))
+            if is_correct:
+                correct += 1
+                by_signal[signal]["correct"] += 1
+            total_error += self._error(signal, float(actual_return_pct))
+
+        for signal_stats in by_signal.values():
+            sig_total = signal_stats["total"]
+            signal_stats["accuracy_pct"] = round(signal_stats["correct"] / sig_total, 4) if sig_total else 0.0
+
+        return {
+            "total": total,
+            "correct": correct,
+            "accuracy_pct": round(correct / total, 4),
+            "avg_error": round(total_error / total, 6),
+            "by_signal": by_signal,
+        }
