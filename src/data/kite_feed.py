@@ -23,6 +23,17 @@ KITE_MAX_HISTORICAL_DAYS = {
 }
 
 
+def _date_chunks(start: datetime, end: datetime, chunk_days: int = 1800):
+    """Yield contiguous (chunk_start, chunk_end) pairs below Kite's historical limit."""
+    if chunk_days <= 0:
+        raise ValueError("chunk_days must be a positive integer")
+    cursor = start
+    while cursor < end:
+        chunk_end = min(cursor + timedelta(days=chunk_days), end)
+        yield cursor, chunk_end
+        cursor = chunk_end
+
+
 def _get_token_for_symbol(symbol: str) -> int:
     _TOKEN_MAP = {
         "NSE:NIFTY 50": NIFTY_TOKEN,
@@ -79,6 +90,7 @@ def fetch_historical_candles(
 ) -> int:
     """Fetch OHLCV candles and store them in SQLite."""
     from src.data.db import init_db
+
     init_db()
 
     kite = get_client()
@@ -99,10 +111,17 @@ def fetch_historical_candles(
         "Fetching historical {} candles for DB symbol {} (token {})",
         interval,
         symbol,
-        token
+        token,
     )
 
     candles_raw: list[dict] = []
+    _yf_fallback: "YFinanceKiteClient | None" = None
+
+    try:
+        from kiteconnect.exceptions import KiteException as _KiteException
+    except Exception:
+        _KiteException = Exception  # type: ignore[assignment,misc]
+
     if _uses_real_kite_client(kite):
         for chunk_start, chunk_end in _iter_historical_chunks(start, end, interval):
             logger.info(
@@ -111,6 +130,39 @@ def fetch_historical_candles(
                 chunk_start.date(),
                 chunk_end.date(),
             )
+            try:
+                chunk = kite.historical_data(
+                    instrument_token=token,
+                    from_date=chunk_start,
+                    to_date=chunk_end,
+                    interval=interval,
+                )
+            except _KiteException as exc:
+                logger.warning(
+                    "Kite historical_data failed for chunk {} -> {}: {}. Falling back to yfinance.",
+                    chunk_start.date(),
+                    chunk_end.date(),
+                    exc,
+                )
+                from src.data.kite_client import YFinanceKiteClient
+
+                if _yf_fallback is None:
+                    _yf_fallback = YFinanceKiteClient()
+                chunk = _yf_fallback.historical_data(
+                    instrument_token=token,
+                    from_date=chunk_start,
+                    to_date=chunk_end,
+                    interval=interval,
+                )
+            if not chunk:
+                logger.warning(
+                    "Empty response for chunk {} -> {}; some candles may be missing",
+                    chunk_start.date(),
+                    chunk_end.date(),
+                )
+            candles_raw.extend(chunk)
+    else:
+        for chunk_start, chunk_end in _date_chunks(start, end):
             candles_raw.extend(
                 kite.historical_data(
                     instrument_token=token,
@@ -119,13 +171,7 @@ def fetch_historical_candles(
                     interval=interval,
                 )
             )
-    else:
-        candles_raw = kite.historical_data(
-            instrument_token=token,
-            from_date=start,
-            to_date=end,
-            interval=interval,
-        )
+
     records = [_candle_to_record(candle, symbol) for candle in candles_raw]
 
     if not records:

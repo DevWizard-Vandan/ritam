@@ -1,9 +1,11 @@
 """Unit tests for kite_feed.py with mocked yfinance-backed client calls."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 import warnings
+
+import pytest
 
 warnings.filterwarnings("ignore", message="\nPyarrow will become a required dependency of pandas", category=DeprecationWarning)
 
@@ -11,6 +13,7 @@ import pandas as pd
 import pytz
 
 from src.data import kite_feed
+from src.data.kite_feed import _date_chunks
 from src.data.kite_client import YFinanceKiteClient
 
 IST = pytz.timezone("Asia/Kolkata")
@@ -71,7 +74,7 @@ def test_fetch_historical_candles_downloads_and_writes_daily_data():
     ), patch(
         "src.data.kite_feed.write_candles"
     ) as mock_write:
-        count = kite_feed.fetch_historical_candles()
+        count = kite_feed.fetch_historical_candles(from_date="2026-04-07", to_date="2026-04-09")
 
     assert count == 2
     mock_write.assert_called_once()
@@ -129,10 +132,27 @@ def test_fetch_historical_candles_returns_zero_when_source_empty():
     ), patch(
         "src.data.kite_feed.write_candles"
     ) as mock_write:
-        count = kite_feed.fetch_historical_candles()
+        count = kite_feed.fetch_historical_candles(from_date="2026-04-07", to_date="2026-04-09")
 
     assert count == 0
     mock_write.assert_not_called()
+
+
+def test_fetch_historical_candles_chunks_large_date_range():
+    start = IST.localize(datetime(2020, 1, 1))
+    end_date = (start + timedelta(days=3599)).strftime("%Y-%m-%d")
+
+    with patch("src.data.kite_feed.get_client", return_value=YFinanceKiteClient()), patch(
+        "src.data.kite_client.yf.download", return_value=_daily_frame()
+    ), patch(
+        "src.data.kite_feed.write_candles"
+    ) as mock_write:
+        count = kite_feed.fetch_historical_candles(from_date="2020-01-01", to_date=end_date)
+
+    assert count == 4
+    mock_write.assert_called_once()
+    _, candles = mock_write.call_args.args
+    assert len(candles) == 4
 
 
 def test_fetch_intraday_candles_downloads_market_window_data():
@@ -186,3 +206,84 @@ def test_start_live_feed_registers_60_second_job_and_starts_scheduler():
     assert kwargs["trigger"] == "cron"
     assert kwargs["second"] == "0"
     scheduler.start.assert_called_once()
+
+
+def test_date_chunks_single_chunk_when_range_within_limit():
+    start = IST.localize(datetime(2024, 1, 1))
+    end = IST.localize(datetime(2024, 6, 1))
+    chunks = list(_date_chunks(start, end))
+    assert len(chunks) == 1
+    assert chunks[0] == (start, end)
+
+
+def test_date_chunks_splits_exactly_at_boundary():
+    start = IST.localize(datetime(2020, 1, 1))
+    end = start + timedelta(days=1801)
+    chunks = list(_date_chunks(start, end, chunk_days=1800))
+    assert len(chunks) == 2
+    assert chunks[0][1] == start + timedelta(days=1800)
+    assert chunks[1][0] == start + timedelta(days=1800)
+    assert chunks[1][1] == end
+
+
+def test_date_chunks_consecutive_chunks_are_contiguous():
+    start = IST.localize(datetime(2000, 1, 1))
+    end = IST.localize(datetime(2025, 1, 1))
+    chunks = list(_date_chunks(start, end, chunk_days=1800))
+    assert len(chunks) >= 2
+    for i in range(1, len(chunks)):
+        prev_end = chunks[i - 1][1]
+        curr_start = chunks[i][0]
+        assert curr_start == prev_end
+
+
+def test_date_chunks_last_chunk_ends_at_end():
+    start = IST.localize(datetime(2000, 1, 1))
+    end = IST.localize(datetime(2024, 12, 31))
+    chunks = list(_date_chunks(start, end, chunk_days=1800))
+    assert chunks[-1][1] == end
+
+
+def test_date_chunks_covers_full_historical_seed_range():
+    start = IST.localize(datetime(2000, 1, 1))
+    end = IST.localize(datetime(2024, 12, 31))
+    chunks = list(_date_chunks(start, end))
+    for chunk_start, chunk_end in chunks:
+        span = (chunk_end - chunk_start).days
+        assert span <= 1800, f"Chunk span {span} exceeds 1800-day chunk size (Kite limit is 2000 days)"
+
+
+def test_date_chunks_raises_for_non_positive_chunk_days():
+    start = IST.localize(datetime(2024, 1, 1))
+    end = IST.localize(datetime(2024, 6, 1))
+    with pytest.raises(ValueError, match="chunk_days must be a positive integer"):
+        list(_date_chunks(start, end, chunk_days=0))
+
+
+def test_fetch_historical_candles_logs_warning_on_empty_chunk():
+    mock_kite = MagicMock()
+    mock_kite.__class__.__module__ = "kiteconnect.connect"
+    mock_kite.historical_data.side_effect = [
+        [
+            {
+                "date": IST.localize(datetime(2020, 1, 2)),
+                "open": 1.0,
+                "high": 2.0,
+                "low": 0.5,
+                "close": 1.5,
+                "volume": 100,
+            }
+        ],
+        [],
+    ]
+
+    start = IST.localize(datetime(2020, 1, 1))
+    end_date = (start + timedelta(days=3599)).strftime("%Y-%m-%d")
+
+    with patch("src.data.kite_feed.get_client", return_value=mock_kite), patch(
+        "src.data.kite_feed.write_candles"
+    ), patch("src.data.kite_feed.logger") as mock_logger:
+        kite_feed.fetch_historical_candles(from_date="2020-01-01", to_date=end_date)
+
+    warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+    assert any("missing" in w for w in warning_calls), "Expected a warning about missing candles for the empty chunk"

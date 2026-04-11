@@ -1,3 +1,6 @@
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 import argparse
 import sys
 from pathlib import Path
@@ -16,7 +19,7 @@ def main():
     args = parser.parse_args()
 
     symbols = ["NSE:NIFTY 50", "NSE:NIFTY BANK"]
-    start_date = "2000-01-01"
+    start_date = "2010-01-01"
     end_date = "2024-12-31"
 
     if args.dry_run:
