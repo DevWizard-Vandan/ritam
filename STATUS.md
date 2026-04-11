@@ -17,7 +17,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 - [x] All 12 task files created (Phases 1-7)
 - [x] `requirements.txt` - all dependencies listed
 - [x] `src/config/settings.py` - env loader
-- [x] `src/data/kite_client.py` - Kite-compatible client implemented with yfinance (`^NSEI` / `^NSEBANK`)
+- [x] `src/data/kite_client.py` - live Kite Connect path enabled when credentials exist, with yfinance fallback (`^NSEI` / `^NSEBANK`) and multi-index candle parsing fix
 - [x] `src/data/db.py` - SQLite helpers (write/read candles)
 - [x] `src/data/kite_feed.py` - OHLCV fetcher boilerplate
 - [x] `src/sentiment/preprocessor.py` - headline cleaner
