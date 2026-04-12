@@ -3,7 +3,7 @@ Gemma 4 reasoning client via Ollama (OpenAI-compatible API).
 Falls back to Gemini 2.5 Flash API if Ollama is offline.
 
 Ollama setup (one-time manual step):
-  ollama pull gemma4:e4b    # quick reasoning, always on
+  ollama pull gemma4:2b    # quick reasoning, always on
   ollama pull gemma4:26b   # deep reasoning, on demand
   ollama serve             # start server at localhost:11434
 """
@@ -13,7 +13,7 @@ from loguru import logger
 from src.config import settings
 
 _OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-GEMMA_SMALL = "gemma4:e4b"
+GEMMA_SMALL = "gemma4:2b"
 GEMMA_LARGE = "gemma4:26b"
 
 _gemini_client = None
