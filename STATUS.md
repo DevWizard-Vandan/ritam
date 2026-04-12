@@ -68,7 +68,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 ---
 
 ## Up Next
-1. `task_007` - Feedback loop [Claude Code]
+- [x] `task_007` - Feedback loop implemented in src/feedback/loop.py and wired to orchestrator and server.
 2. `task_008` - RL weight updater [Claude Code]
 3. `task_010` - Gemma reasoning layer (after Ollama installed) [Claude Code]
 4. `task_011` - Analog agent integration [Claude Code]
@@ -91,6 +91,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 | `feature/tests-backtest-edge-cases` | `task_005.1` complete (backtest engine edge case tests) | pending |
 | `work` | `task_006` foundation (orchestrator agent scaffold + tests) | pending |
 | `fix/gemma4-ollama-empty-response` | `task` fix empty content bug from Ollama API | pending |
+| `feature/feedback-loop` | `task_007` complete (feedback loop to resolve predictions) | pending |
 
 ---
 

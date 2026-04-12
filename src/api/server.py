@@ -14,11 +14,13 @@ from src.api.websocket_manager import WebSocketManager
 from src.data.db import read_candles, get_connection
 from src.config import settings
 from src.feedback.tracker import PredictionTracker
+from src.feedback.loop import FeedbackLoop
 from loguru import logger
 
 app = FastAPI(title="RITAM API", version="2.0")
 manager = WebSocketManager()
 tracker = PredictionTracker(settings.DB_PATH)
+loop = FeedbackLoop(tracker)
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,6 +46,14 @@ def post_outcome(payload: OutcomePayload):
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"status": "ok", "timestamp": payload.timestamp}
+
+
+@app.post("/api/feedback/resolve/{timestamp}")
+def resolve_outcome(timestamp: str):
+    result = loop.resolve_outcome(timestamp)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Candles not found for outcome resolution")
+    return result
 
 
 @app.get("/api/candles")

@@ -4,10 +4,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.data.news_fetcher import fetch_headlines
+from loguru import logger
 from src.reasoning.analog_finder import find_analogs
 from src.reasoning.regime_classifier import classify_regime
 from src.sentiment.scorer import score_headlines
-
+from src.feedback.loop import FeedbackLoop
+from src.feedback.tracker import PredictionTracker
+from src.config import settings
 
 @dataclass
 class OrchestratorResult:
@@ -22,6 +25,8 @@ class MarketOrchestrator:
 
     def __init__(self, analog_top_n: int = 3):
         self.analog_top_n = analog_top_n
+        self.tracker = PredictionTracker(settings.DB_PATH)
+        self.loop = FeedbackLoop(self.tracker)
 
     def run_cycle(self, last_candle: dict, recent_daily_candles: list[dict], vix: float = 15.0) -> OrchestratorResult:
         """
@@ -53,12 +58,17 @@ class MarketOrchestrator:
         top_analogs = find_analogs(recent_daily_candles, top_n=self.analog_top_n)
         signal = self._derive_signal(regime=regime, sentiment_score=sentiment_score)
 
-        return OrchestratorResult(
+        result = OrchestratorResult(
             regime=regime,
             sentiment_score=sentiment_score,
             top_analogs=top_analogs,
             signal=signal,
         )
+
+        timestamp = self.loop.record_prediction(result)
+        logger.info(f"Prediction recorded: {signal} at {timestamp}")
+
+        return result
 
     @staticmethod
     def _derive_signal(regime: str, sentiment_score: float) -> str:
