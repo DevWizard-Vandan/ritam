@@ -6,7 +6,9 @@ from src.reasoning.gemma_client import quick_reason
 from loguru import logger
 
 REGIME_PROMPT = """
-You are a market analyst. Based on these indicators:
+You are a market regime classifier. Reply with one word only.
+
+Based on these indicators:
 - Last 20 candle price change: {price_change_pct}%
 - India VIX: {vix}
 - News volume today: {news_count} articles
@@ -14,8 +16,6 @@ You are a market analyst. Based on these indicators:
 
 Classify the current market regime. Reply with EXACTLY one word from this list:
 crisis / recovery / trending_up / trending_down / choppy / baseline
-
-Reply with only the single word. No explanation.
 """
 
 VALID_REGIMES = {"crisis", "recovery", "trending_up", "trending_down", "choppy", "baseline"}

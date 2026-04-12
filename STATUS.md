@@ -52,6 +52,8 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 - [x] `src/api/server.py` - added `/accuracy` and `/outcome` endpoints powered by feedback tracker
 - [x] `src/feedback/tracker.py` - hardened with `feedback_predictions` table, conflict-safe inserts, and missing-outcome guard
 - [x] `src/api/server.py` - moved feedback routes to `/api/feedback/accuracy` and `/api/feedback/outcome` with 404 on unknown timestamp
+- [x] Fixed Gemma 4 empty content bug on Ollama by bypassing openai client, setting `{"think": False}` in generation options, and extracting via a robust fallback chain in `src/reasoning/gemma_client.py`.
+- [x] Shortened regime classifier prompt to stay within token limits.
 
 ---
 
@@ -88,6 +90,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 | `feature/backtesting-engine` | `task_005` complete (backtesting engine) | pending |
 | `feature/tests-backtest-edge-cases` | `task_005.1` complete (backtest engine edge case tests) | pending |
 | `work` | `task_006` foundation (orchestrator agent scaffold + tests) | pending |
+| `fix/gemma4-ollama-empty-response` | `task` fix empty content bug from Ollama API | pending |
 
 ---
 

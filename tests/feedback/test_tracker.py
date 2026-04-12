@@ -2,8 +2,9 @@
 from src.feedback.tracker import PredictionTracker
 
 
-def test_record_prediction_stores_correct_fields():
-    tracker = PredictionTracker(":memory:")
+def test_record_prediction_stores_correct_fields(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    tracker = PredictionTracker(db_path)
     tracker.record_prediction(
         timestamp="2026-04-11T09:15:00+05:30",
         signal="buy",
@@ -25,8 +26,9 @@ def test_record_prediction_stores_correct_fields():
     assert row == ("2026-04-11T09:15:00+05:30", "buy", 0.42, "recovery", 0.73, 0)
 
 
-def test_record_outcome_resolves_row():
-    tracker = PredictionTracker(":memory:")
+def test_record_outcome_resolves_row(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    tracker = PredictionTracker(db_path)
     timestamp = "2026-04-11T09:20:00+05:30"
     tracker.record_prediction(timestamp, "sell", -0.2, "trending_down", 0.61)
 
@@ -41,8 +43,9 @@ def test_record_outcome_resolves_row():
     assert row == (-0.35, 1)
 
 
-def test_get_accuracy_stats_returns_correct_accuracy_pct():
-    tracker = PredictionTracker(":memory:")
+def test_get_accuracy_stats_returns_correct_accuracy_pct(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    tracker = PredictionTracker(db_path)
     tracker.record_prediction("t1", "buy", 0.3, "recovery", 0.7)
     tracker.record_prediction("t2", "sell", -0.2, "crisis", 0.8)
     tracker.record_outcome("t1", 0.1)
@@ -55,8 +58,9 @@ def test_get_accuracy_stats_returns_correct_accuracy_pct():
     assert stats["accuracy_pct"] == 0.5
 
 
-def test_buy_signal_with_positive_return_is_correct():
-    tracker = PredictionTracker(":memory:")
+def test_buy_signal_with_positive_return_is_correct(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    tracker = PredictionTracker(db_path)
     tracker.record_prediction("t_buy", "buy", 0.4, "trending_up", 0.69)
     tracker.record_outcome("t_buy", 0.2)
 
@@ -66,8 +70,9 @@ def test_buy_signal_with_positive_return_is_correct():
     assert stats["by_signal"]["buy"]["correct"] == 1
 
 
-def test_sell_signal_with_negative_return_is_correct():
-    tracker = PredictionTracker(":memory:")
+def test_sell_signal_with_negative_return_is_correct(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    tracker = PredictionTracker(db_path)
     tracker.record_prediction("t_sell", "sell", -0.4, "crisis", 0.71)
     tracker.record_outcome("t_sell", -0.2)
 
@@ -77,8 +82,9 @@ def test_sell_signal_with_negative_return_is_correct():
     assert stats["by_signal"]["sell"]["correct"] == 1
 
 
-def test_stats_return_zero_totals_on_empty_db():
-    tracker = PredictionTracker(":memory:")
+def test_stats_return_zero_totals_on_empty_db(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    tracker = PredictionTracker(db_path)
 
     stats = tracker.get_accuracy_stats()
 
