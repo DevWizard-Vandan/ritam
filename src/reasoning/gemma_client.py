@@ -9,22 +9,29 @@ Ollama setup (one-time manual step):
 """
 import os
 import requests
-from openai import OpenAI
 from loguru import logger
 from src.config import settings
 
-OLLAMA_BASE = "http://localhost:11434/v1"
+_OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 GEMMA_SMALL = "gemma4:2b"
 GEMMA_LARGE = "gemma4:26b"
 
-_ollama_client = None
 _gemini_client = None
+
+
+def _extract_content(response_json: dict) -> str:
+    candidates = [
+        (response_json.get("response") or "").strip(),
+        ((response_json.get("message") or {}).get("content") or "").strip(),
+        (response_json.get("thinking") or "").strip(),
+    ]
+    return next((c for c in candidates if c), "")
 
 
 def _is_ollama_running() -> bool:
     """Check if Ollama server is reachable."""
     try:
-        r = requests.get("http://localhost:11434/api/tags", timeout=2)
+        r = requests.get(f"{_OLLAMA_BASE}/api/tags", timeout=2)
         return r.status_code == 200
     except Exception:
         return False
@@ -54,17 +61,14 @@ def quick_reason(prompt: str) -> str:
             "options": {"think": False}
         }
         try:
-            resp = requests.post("http://localhost:11434/api/generate", json=payload, timeout=30)
+            resp = requests.post(f"{_OLLAMA_BASE}/api/generate", json=payload, timeout=30)
             resp.raise_for_status()
             response_json = resp.json()
-            content = (
-                response_json.get("response")
-                or response_json.get("message", {}).get("content")
-                or response_json.get("thinking")
-                or ""
-            ).strip()
+            content = _extract_content(response_json)
             if not content:
                 logger.warning(f"Gemma returned empty content. Raw: {str(response_json)[:500]}")
+                logger.warning("Falling back to Gemini due to empty Ollama response")
+                return _gemini_fallback(prompt)
             logger.debug(f"quick_reason via {GEMMA_SMALL}")
             return content
         except Exception as e:
@@ -84,17 +88,14 @@ def deep_reason(prompt: str) -> str:
             "options": {"think": False}
         }
         try:
-            resp = requests.post("http://localhost:11434/api/generate", json=payload, timeout=120)
+            resp = requests.post(f"{_OLLAMA_BASE}/api/generate", json=payload, timeout=120)
             resp.raise_for_status()
             response_json = resp.json()
-            content = (
-                response_json.get("response")
-                or response_json.get("message", {}).get("content")
-                or response_json.get("thinking")
-                or ""
-            ).strip()
+            content = _extract_content(response_json)
             if not content:
                 logger.warning(f"Gemma returned empty content. Raw: {str(response_json)[:500]}")
+                logger.warning("Falling back to Gemini due to empty Ollama response")
+                return _gemini_fallback(prompt)
             logger.debug(f"deep_reason via {GEMMA_LARGE}")
             return content
         except Exception as e:

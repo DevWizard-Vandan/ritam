@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 
 def test_quick_reason_returns_string():
     with patch("src.reasoning.gemma_client._is_ollama_running", return_value=True), \
-         patch("requests.post") as mock_post:
+         patch("src.reasoning.gemma_client.requests.post") as mock_post:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"response": "choppy"}
         mock_post.return_value = mock_resp
@@ -17,7 +17,7 @@ def test_quick_reason_returns_string():
 
 def test_quick_reason_fallback_chain_thinking():
     with patch("src.reasoning.gemma_client._is_ollama_running", return_value=True), \
-         patch("requests.post") as mock_post:
+         patch("src.reasoning.gemma_client.requests.post") as mock_post:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"response": "", "thinking": "trending_up"}
         mock_post.return_value = mock_resp
@@ -38,7 +38,7 @@ def test_falls_back_when_ollama_offline():
 
 def test_deep_reason_uses_large_model():
     with patch("src.reasoning.gemma_client._is_ollama_running", return_value=True), \
-         patch("requests.post") as mock_post:
+         patch("src.reasoning.gemma_client.requests.post") as mock_post:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"response": "MATCH_1: Test scenario"}
         mock_post.return_value = mock_resp
