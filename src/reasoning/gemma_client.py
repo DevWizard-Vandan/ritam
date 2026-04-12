@@ -30,13 +30,6 @@ def _is_ollama_running() -> bool:
         return False
 
 
-def _get_ollama_client() -> OpenAI:
-    global _ollama_client
-    if _ollama_client is None:
-        _ollama_client = OpenAI(base_url=OLLAMA_BASE, api_key="ollama")
-    return _ollama_client
-
-
 def _gemini_fallback(prompt: str) -> str:
     """Call Gemini 2.5 Flash API as cloud fallback."""
     import google.generativeai as genai
@@ -54,30 +47,58 @@ def _gemini_fallback(prompt: str) -> str:
 def quick_reason(prompt: str) -> str:
     """Fast reasoning using Gemma 4 E2B. Falls back to Gemini if offline."""
     if _is_ollama_running():
-        client = _get_ollama_client()
-        resp = client.chat.completions.create(
-            model=GEMMA_SMALL,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=512,
-            temperature=0.3
-        )
-        logger.debug(f"quick_reason via {GEMMA_SMALL}")
-        return resp.choices[0].message.content
-    logger.warning("Ollama offline — falling back to Gemini for quick_reason")
+        payload = {
+            "model": GEMMA_SMALL,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"think": False}
+        }
+        try:
+            resp = requests.post("http://localhost:11434/api/generate", json=payload, timeout=30)
+            resp.raise_for_status()
+            response_json = resp.json()
+            content = (
+                response_json.get("response")
+                or response_json.get("message", {}).get("content")
+                or response_json.get("thinking")
+                or ""
+            ).strip()
+            if not content:
+                logger.warning(f"Gemma returned empty content. Raw: {str(response_json)[:500]}")
+            logger.debug(f"quick_reason via {GEMMA_SMALL}")
+            return content
+        except Exception as e:
+            logger.error(f"Ollama API error: {e}")
+            # Fall through to Gemini
+    logger.warning("Ollama offline or failed — falling back to Gemini for quick_reason")
     return _gemini_fallback(prompt)
 
 
 def deep_reason(prompt: str) -> str:
     """Deep reasoning using Gemma 4 26B. Falls back to Gemini if offline."""
     if _is_ollama_running():
-        client = _get_ollama_client()
-        resp = client.chat.completions.create(
-            model=GEMMA_LARGE,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=2048,
-            temperature=0.4
-        )
-        logger.debug(f"deep_reason via {GEMMA_LARGE}")
-        return resp.choices[0].message.content
-    logger.warning("Ollama offline — falling back to Gemini for deep_reason")
+        payload = {
+            "model": GEMMA_LARGE,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"think": False}
+        }
+        try:
+            resp = requests.post("http://localhost:11434/api/generate", json=payload, timeout=120)
+            resp.raise_for_status()
+            response_json = resp.json()
+            content = (
+                response_json.get("response")
+                or response_json.get("message", {}).get("content")
+                or response_json.get("thinking")
+                or ""
+            ).strip()
+            if not content:
+                logger.warning(f"Gemma returned empty content. Raw: {str(response_json)[:500]}")
+            logger.debug(f"deep_reason via {GEMMA_LARGE}")
+            return content
+        except Exception as e:
+            logger.error(f"Ollama API error: {e}")
+            # Fall through to Gemini
+    logger.warning("Ollama offline or failed — falling back to Gemini for deep_reason")
     return _gemini_fallback(prompt)
