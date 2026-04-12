@@ -76,10 +76,10 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 ---
 
 ## Ollama Setup Status
-- [ ] Ollama installed on dev machine
-- [ ] `gemma4:2b` pulled (~2.5 GB)
-- [ ] `gemma4:26b` pulled (~15 GB, optional, needs GPU)
-- [ ] `ollama serve` running in background
+- [x] Ollama installed on dev machine
+- [x] `gemma4:2b` pulled (~9.6 GB)
+- [ ] `gemma4:26b` pulled (~19 GB, optional, needs GPU)
+- [x] `ollama serve` running in background
 
 ---
 
@@ -98,9 +98,9 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 | Tool | Cost |
 | --- | --- |
 | Kite Connect | Rs500 |
-| Claude Code (Pro) | Rs1,670 |
-| OpenAI Codex | Rs1,670 |
+<!-- | Claude Code (Pro) | Rs1,670 | -->
+| OpenAI Codex | Rs0 |
 | Jules | Rs0 |
 | Gemma 4 (Ollama) | Rs0 |
 | Gemini API | Rs0 |
-| **Total** | **Rs3,840** |
+| **Total** | **Rs500** |
