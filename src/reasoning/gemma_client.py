@@ -12,7 +12,7 @@ import requests
 from loguru import logger
 from src.config import settings
 
-OLLAMA_BASE = "http://localhost:11434/v1"
+_OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 GEMMA_SMALL = "gemma4:e4b"
 GEMMA_LARGE = "gemma4:26b"
 
