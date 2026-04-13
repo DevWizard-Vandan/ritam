@@ -52,3 +52,4 @@ pytest-asyncio==0.23.6
 # Visualization (reports)
 matplotlib==3.9.2
 plotly==5.18.0
+apscheduler>=3.10.0

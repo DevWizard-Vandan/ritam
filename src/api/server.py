@@ -10,6 +10,9 @@ from datetime import datetime
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 from src.api.websocket_manager import WebSocketManager
 from src.data.db import read_candles, get_connection
 from src.config import settings
@@ -26,6 +29,100 @@ tracker = PredictionTracker(settings.DB_PATH)
 loop = FeedbackLoop(tracker)
 updater = WeightUpdater(tracker)
 
+scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
+scheduler_job_status = {}
+
+def run_scheduled_cycle():
+    """Runs one full orchestrator cycle. Called by scheduler."""
+    import datetime as dt
+    now = dt.datetime.now(dt.timezone(dt.timedelta(hours=5, minutes=30)))
+
+    # Check if Mon-Fri
+    if now.weekday() > 4:
+        logger.info("Market closed — skipping cycle")
+        scheduler_job_status["market_cycle"] = "skipped"
+        return
+
+    # Check market hours
+    open_time = dt.datetime.strptime(settings.MARKET_OPEN_TIME, "%H:%M").time()
+    close_time = dt.datetime.strptime(settings.MARKET_CLOSE_TIME, "%H:%M").time()
+
+    if not (open_time <= now.time() <= close_time):
+        logger.info("Market closed — skipping cycle")
+        scheduler_job_status["market_cycle"] = "skipped"
+        return
+
+    try:
+        import src.data.db as db_mod
+        from src.orchestrator.agent import MarketOrchestrator
+        now_iso = now.isoformat()
+        candles = db_mod.read_candles(settings.NIFTY_SYMBOL, "2000-01-01", now_iso, limit=60)
+
+        if not candles:
+            logger.warning("No candles available to run cycle.")
+            scheduler_job_status["market_cycle"] = "failed"
+            return
+
+        o = MarketOrchestrator()
+        result = o.run_cycle(
+            last_candle=candles[-1],
+            recent_daily_candles=candles[-20:]
+        )
+        logger.info(f"Scheduled cycle complete: {result.signal} "
+                    f"| regime={result.regime} "
+                    f"| sentiment={result.sentiment_score:.4f}")
+        scheduler_job_status["market_cycle"] = "success"
+    except Exception as e:
+        logger.error(f"Scheduled cycle failed: {e}", exc_info=True)
+        scheduler_job_status["market_cycle"] = "failed"
+
+def resolve_outcomes_job():
+    try:
+        from src.learning.updater import resolve_all_pending_outcomes
+        resolved = resolve_all_pending_outcomes()
+        logger.info(f"Outcome resolution: {resolved} records updated")
+        scheduler_job_status["outcome_resolver"] = "success"
+    except Exception as e:
+        logger.error(f"Outcome resolution failed: {e}", exc_info=True)
+        scheduler_job_status["outcome_resolver"] = "failed"
+
+def weight_update_job():
+    try:
+        from src.learning.updater import update_weights
+        update_weights()
+        logger.info("Weekly weight update complete")
+        scheduler_job_status["weight_updater"] = "success"
+    except Exception as e:
+        logger.error(f"Weight update failed: {e}", exc_info=True)
+        scheduler_job_status["weight_updater"] = "failed"
+
+@app.on_event("startup")
+def startup_event():
+    if settings.SCHEDULER_ENABLED:
+        scheduler.add_job(
+            run_scheduled_cycle,
+            trigger=IntervalTrigger(minutes=settings.CYCLE_INTERVAL_MINUTES),
+            id="market_cycle"
+        )
+        scheduler.add_job(
+            resolve_outcomes_job,
+            trigger=CronTrigger(hour=9, minute=0, timezone="Asia/Kolkata"),
+            id="outcome_resolver"
+        )
+        scheduler.add_job(
+            weight_update_job,
+            trigger=CronTrigger(day_of_week="sun", hour=0, minute=0, timezone="Asia/Kolkata"),
+            id="weight_updater"
+        )
+        scheduler.start()
+        logger.info("Scheduler started.")
+
+@app.on_event("shutdown")
+def shutdown_event():
+    if settings.SCHEDULER_ENABLED:
+        scheduler.shutdown(wait=False)
+        logger.info("Scheduler shutdown.")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -39,6 +136,25 @@ class OutcomePayload(BaseModel):
 
 
 import src.orchestrator.agent
+
+@app.get("/api/scheduler/status")
+def get_scheduler_status():
+    jobs_info = []
+    if settings.SCHEDULER_ENABLED:
+        for job in scheduler.get_jobs():
+            jobs_info.append({
+                "id": job.id,
+                "name": job.name,
+                "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
+                "last_status": scheduler_job_status.get(job.id, "pending")
+            })
+    return {
+        "scheduler_enabled": settings.SCHEDULER_ENABLED,
+        "cycle_interval_minutes": settings.CYCLE_INTERVAL_MINUTES,
+        "market_hours": f"{settings.MARKET_OPEN_TIME}–{settings.MARKET_CLOSE_TIME} IST Mon–Fri",
+        "jobs": jobs_info
+    }
+
 
 @app.get("/api/explanation/latest")
 def get_latest_explanation():

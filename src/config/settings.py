@@ -13,12 +13,26 @@ class Settings:
     KITE_ACCESS_TOKEN: str = os.getenv("KITE_ACCESS_TOKEN", "")
     NEWS_API_KEY: str = os.getenv("NEWS_API_KEY", "")
 
-    GEMINI_API_KEY_1: str = os.getenv("GEMINI_API_KEY_1", "")
-    GEMINI_API_KEY_2: str = os.getenv("GEMINI_API_KEY_2", "")
-    GEMINI_FLASH_LITE_MODEL: str = "gemini-2.5-flash-lite"
+    # 7 Gemini API keys — one per Google account
+    GEMINI_API_KEY_1: str = os.getenv("GEMINI_API_KEY_1", "")   # Account A — quick_reason (Flash-Lite)
+    GEMINI_API_KEY_2: str = os.getenv("GEMINI_API_KEY_2", "")   # Account B — deep_reason (Flash)
+    GEMINI_API_KEY_3: str = os.getenv("GEMINI_API_KEY_3", "")   # Account C — TechnicalPatternAgent
+    GEMINI_API_KEY_4: str = os.getenv("GEMINI_API_KEY_4", "")   # Account D — MacroSynthesisAgent
+    GEMINI_API_KEY_5: str = os.getenv("GEMINI_API_KEY_5", "")   # Account E — NewsImpactAgent
+    GEMINI_API_KEY_6: str = os.getenv("GEMINI_API_KEY_6", "")   # Account F — RegimeCrossCheckAgent
+    GEMINI_API_KEY_7: str = os.getenv("GEMINI_API_KEY_7", "")   # Account G — overflow / fallback pool
+
+    # Model names
+    GEMINI_FLASH_LITE_MODEL: str = "gemini-2.5-flash-lite-preview-06-17"
     GEMINI_FLASH_MODEL: str = "gemini-2.5-flash"
     GEMINI_PRO_MODEL: str = "gemini-2.5-pro"
     GEMINI_USE_PRO: bool = os.getenv("GEMINI_USE_PRO", "false").lower() == "true"
+
+    # Scheduler config
+    CYCLE_INTERVAL_MINUTES: int = 5
+    MARKET_OPEN_TIME: str = "09:15"   # IST
+    MARKET_CLOSE_TIME: str = "15:30"  # IST
+    SCHEDULER_ENABLED: bool = os.getenv("SCHEDULER_ENABLED", "true").lower() == "true"
 
     DB_PATH: str = os.getenv("DB_PATH", "data/market.db")
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
