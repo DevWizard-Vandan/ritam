@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 from typing import TYPE_CHECKING
 from src.feedback.tracker import PredictionTracker
 from src.data.db import read_candles
+from src.config import settings
 
 if TYPE_CHECKING:
     from src.orchestrator.agent import OrchestratorResult
@@ -10,13 +11,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 class FeedbackLoop:
-    def __init__(self, tracker: PredictionTracker, symbol: str = "NSE:NIFTY 50"):
+    def __init__(self, tracker: PredictionTracker, symbol: str | None = None):
         self.tracker = tracker
-        self.symbol = symbol
+        self.symbol = symbol or settings.NIFTY_SYMBOL
 
     def record_prediction(self, result: "OrchestratorResult") -> str:
         ist_tz = timezone(timedelta(hours=5, minutes=30))
-        timestamp = datetime.now(ist_tz).isoformat()
+        timestamp = datetime.now(ist_tz).replace(microsecond=0).isoformat()
         analog_similarity = result.top_analogs[0].get("similarity_score", 0.0) if result.top_analogs else 0.0
 
         self.tracker.record_prediction(
@@ -53,7 +54,11 @@ class FeedbackLoop:
 
         actual_return_pct = (next_close - entry_close) / entry_close * 100
 
-        self.tracker.record_outcome(timestamp, actual_return_pct)
+        try:
+            self.tracker.record_outcome(timestamp, actual_return_pct)
+        except ValueError:
+            logger.warning(f"Prediction not found for timestamp: {timestamp}")
+            return None
 
         return {
             "timestamp": timestamp,

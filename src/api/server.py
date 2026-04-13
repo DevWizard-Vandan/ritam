@@ -50,9 +50,13 @@ def post_outcome(payload: OutcomePayload):
 
 @app.post("/api/feedback/resolve/{timestamp}")
 def resolve_outcome(timestamp: str):
+    try:
+        datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid timestamp format")
     result = loop.resolve_outcome(timestamp)
     if result is None:
-        raise HTTPException(status_code=404, detail="Candles not found for outcome resolution")
+        raise HTTPException(status_code=404, detail="No prediction or candles found for outcome resolution")
     return result
 
 

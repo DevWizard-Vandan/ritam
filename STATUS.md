@@ -68,10 +68,10 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 ---
 
 ## Up Next
-- [x] `task_007` - Feedback loop implemented in src/feedback/loop.py and wired to orchestrator and server.
-2. `task_008` - RL weight updater [Claude Code]
-3. `task_010` - Gemma reasoning layer (after Ollama installed) [Claude Code]
-4. `task_011` - Analog agent integration [Claude Code]
+- [x] `task_007` - Feedback loop implemented
+- [ ] `task_008` - RL weight updater
+- [ ] `task_010` - Gemma reasoning layer
+- [ ] `task_011` - Analog agent integration
 
 ---
 

@@ -23,10 +23,15 @@ class OrchestratorResult:
 class MarketOrchestrator:
     """Coordinate pipeline steps and output one actionable signal per cycle."""
 
-    def __init__(self, analog_top_n: int = 3):
+    def __init__(
+        self,
+        analog_top_n: int = 3,
+        tracker: PredictionTracker | None = None,
+        loop: FeedbackLoop | None = None,
+    ):
         self.analog_top_n = analog_top_n
-        self.tracker = PredictionTracker(settings.DB_PATH)
-        self.loop = FeedbackLoop(self.tracker)
+        self.tracker = tracker or PredictionTracker(settings.DB_PATH)
+        self.loop = loop or FeedbackLoop(self.tracker)
 
     def run_cycle(self, last_candle: dict, recent_daily_candles: list[dict], vix: float = 15.0) -> OrchestratorResult:
         """
