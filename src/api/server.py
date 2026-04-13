@@ -36,6 +36,12 @@ class OutcomePayload(BaseModel):
     actual_return_pct: float
 
 
+import src.orchestrator.agent
+
+@app.get("/api/explanation/latest")
+def get_latest_explanation():
+    return src.orchestrator.agent.LATEST_EXPLANATION
+
 @app.get("/api/feedback/accuracy")
 def get_feedback_accuracy():
     return tracker.get_accuracy_stats()
