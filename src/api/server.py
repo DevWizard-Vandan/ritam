@@ -14,11 +14,15 @@ from src.api.websocket_manager import WebSocketManager
 from src.data.db import read_candles, get_connection
 from src.config import settings
 from src.feedback.tracker import PredictionTracker
+from src.feedback.loop import FeedbackLoop
+from src.learning import WeightUpdater
 from loguru import logger
 
 app = FastAPI(title="RITAM API", version="2.0")
 manager = WebSocketManager()
 tracker = PredictionTracker(settings.DB_PATH)
+loop = FeedbackLoop(tracker)
+updater = WeightUpdater(tracker)
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,6 +48,18 @@ def post_outcome(payload: OutcomePayload):
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"status": "ok", "timestamp": payload.timestamp}
+
+
+@app.post("/api/feedback/resolve/{timestamp}")
+def resolve_outcome(timestamp: str):
+    try:
+        datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid timestamp format")
+    result = loop.resolve_outcome(timestamp)
+    if result is None:
+        raise HTTPException(status_code=404, detail="No prediction or candles found for outcome resolution")
+    return result
 
 
 @app.get("/api/candles")
@@ -76,6 +92,16 @@ def get_agent_info():
         with open(weights_path) as f:
             return json.load(f)
     return {"weights": {}, "week_accuracy": None}
+
+
+@app.post("/api/learning/update-weights")
+def update_weights():
+    return updater.update_weights()
+
+
+@app.get("/api/learning/weights")
+def get_current_weights():
+    return updater.get_current_weights()
 
 
 @app.websocket("/ws/predictions")

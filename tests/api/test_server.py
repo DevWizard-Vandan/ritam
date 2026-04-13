@@ -59,3 +59,34 @@ def test_feedback_outcome_unknown_timestamp_returns_404(client):
         )
 
     assert resp.status_code == 404
+
+def test_resolve_outcome_invalid_timestamp_returns_400(client):
+    resp = client.post("/api/feedback/resolve/not-a-timestamp")
+    assert resp.status_code == 400
+
+def test_resolve_outcome_missing_candles_returns_404(client, monkeypatch):
+    from src.feedback import loop as fb_loop
+    monkeypatch.setattr(fb_loop.FeedbackLoop, "resolve_outcome", lambda self, ts: None)
+    resp = client.post("/api/feedback/resolve/2023-01-01T09:15:00+05:30")
+    assert resp.status_code == 404
+
+def test_resolve_outcome_success_returns_payload(client, monkeypatch):
+    from src.feedback import loop as fb_loop
+    monkeypatch.setattr(fb_loop.FeedbackLoop, "resolve_outcome", lambda self, ts: {"timestamp": ts, "actual_return_pct": 1.5})
+    resp = client.post("/api/feedback/resolve/2024-01-02T09:15:00+05:30")
+    assert resp.status_code == 200
+    assert "actual_return_pct" in resp.json()
+
+def test_get_learning_weights_returns_200(client, monkeypatch):
+    from src.learning import weight_updater as wu
+    monkeypatch.setattr(wu.WeightUpdater, "get_current_weights", lambda self: {"weights": {"buy": 1.0, "sell": 1.0, "hold": 1.0}})
+    resp = client.get("/api/learning/weights")
+    assert resp.status_code == 200
+    assert "weights" in resp.json()
+
+def test_post_update_weights_returns_200(client, monkeypatch):
+    from src.learning import weight_updater as wu
+    monkeypatch.setattr(wu.WeightUpdater, "update_weights", lambda self: {"buy": {"old_weight": 1.0, "new_weight": 1.05, "accuracy_pct": 70.0}})
+    resp = client.post("/api/learning/update-weights")
+    assert resp.status_code == 200
+    assert "buy" in resp.json()
