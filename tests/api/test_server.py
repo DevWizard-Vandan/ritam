@@ -90,3 +90,17 @@ def test_post_update_weights_returns_200(client, monkeypatch):
     resp = client.post("/api/learning/update-weights")
     assert resp.status_code == 200
     assert "buy" in resp.json()
+
+
+def test_get_analogs_returns_list(client, monkeypatch):
+    from src.reasoning.analog_finder import AnalogFinder
+    import src.api.server
+    mock_analogs = [{"start_date": "2023-01-01", "end_date": "2023-01-10", "similarity_score": 0.99, "next_5day_return": 1.5}] * 3
+    monkeypatch.setattr(AnalogFinder, "find_analogs", lambda self, candles, top_n, symbol="NSE:NIFTY 50": mock_analogs)
+    monkeypatch.setattr(src.api.server, "read_candles", lambda *args, **kwargs: [{"close": 100}] * 20)
+
+    resp = client.get("/api/analogs?top_n=3")
+
+    assert resp.status_code == 200
+    assert isinstance(resp.json(), list)
+    assert len(resp.json()) == 3

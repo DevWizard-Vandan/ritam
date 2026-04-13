@@ -17,6 +17,8 @@ from src.feedback.tracker import PredictionTracker
 from src.feedback.loop import FeedbackLoop
 from src.learning import WeightUpdater
 from loguru import logger
+from src.reasoning.analog_finder import AnalogFinder
+import datetime as dt
 
 app = FastAPI(title="RITAM API", version="2.0")
 manager = WebSocketManager()
@@ -66,6 +68,14 @@ def resolve_outcome(timestamp: str):
     if result is None:
         raise HTTPException(status_code=404, detail="No prediction or candles found for outcome resolution")
     return result
+
+
+@app.get("/api/analogs")
+def get_analogs(top_n: int = 3):
+    now = dt.datetime.now(dt.timezone(dt.timedelta(hours=5, minutes=30))).isoformat()
+    candles = read_candles(settings.NIFTY_SYMBOL, "2000-01-01", now)[-20:]
+    finder = AnalogFinder(settings.DB_PATH)
+    return finder.find_analogs(candles, top_n=top_n)
 
 
 @app.get("/api/candles")
