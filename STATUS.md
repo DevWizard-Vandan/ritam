@@ -96,6 +96,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 | `fix/gemma4-ollama-empty-response` | `task` fix empty content bug from Ollama API | pending |
 | `feature/feedback-loop` | `task_007` complete (feedback loop to resolve predictions) | pending |
 | `feature/dashboard-v1` | React dashboard with 4 premium panels | pending |
+| `feature/gemini-dual-key-routing` | implemented Gemini dual key routing | pending |
 
 ---
 
