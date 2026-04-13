@@ -254,6 +254,16 @@ result = orchestrator.run_cycle(
 print(result)
 ```
 
+## Frontend
+
+The RITAM dashboard is a React + TypeScript single-page application in `frontend/`.
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+See [frontend/README.md](frontend/README.md) for full details.
+
 ## Product Vision
 
 RITAM is moving toward a live intelligence surface with:

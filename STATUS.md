@@ -1,6 +1,6 @@
 # RITAM - Project Status
-# Last Updated: April 11, 2026 - feedback tracker hardening and API route updates
-# Updating Agent: Codex (work)
+# Last Updated: April 13, 2026 - React dashboard (frontend/) built with Vite + Tailwind CSS
+# Updating Agent: Antigravity (feature/dashboard-v1)
 
 ---
 
@@ -54,6 +54,9 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 - [x] `src/api/server.py` - moved feedback routes to `/api/feedback/accuracy` and `/api/feedback/outcome` with 404 on unknown timestamp
 - [x] Fixed Gemma 4 empty content bug on Ollama by bypassing openai client, setting `{"think": False}` in generation options, and extracting via a robust fallback chain in `src/reasoning/gemma_client.py`.
 - [x] Shortened regime classifier prompt to stay within token limits.
+- [x] `frontend/` — React + Vite + TypeScript dashboard with Tailwind CSS (4 panels: Signal, Accuracy, Analogs, Explanation)
+- [x] `frontend/README.md` — dashboard setup and usage guide
+- [x] Root `README.md` updated with Frontend section
 
 ---
 
@@ -91,6 +94,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 | `feature/tests-backtest-edge-cases` | `task_005.1` complete (backtest engine edge case tests) | pending |
 | `work` | `task_006` foundation (orchestrator agent scaffold + tests) | pending |
 | `fix/gemma4-ollama-empty-response` | `task` fix empty content bug from Ollama API | pending |
+| `feature/dashboard-v1` | React dashboard with 4 premium panels | pending |
 
 ---
 
