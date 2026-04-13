@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from src.feedback.tracker import PredictionTracker
 
 
 class WeightUpdater:
-    def __init__(self, tracker: PredictionTracker, weights_path: str = "config/agent_weights.json"):
+    def __init__(self, tracker: PredictionTracker, weights_path: str = "config/signal_weights.json"):
         self.tracker = tracker
         self.weights_path = Path(weights_path)
 
@@ -20,7 +20,8 @@ class WeightUpdater:
             return json.load(f)
 
     def update_weights(self) -> dict:
-        stats = self.tracker.get_accuracy_stats()
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        stats = self.tracker.get_accuracy_stats(since=cutoff)
         by_signal = stats.get("by_signal", {})
 
         current_data = self.get_current_weights()
@@ -54,7 +55,8 @@ class WeightUpdater:
                 "accuracy_pct": accuracy
             }
 
-        current_data["updated_at"] = datetime.now().isoformat()
+        ist = timezone(timedelta(hours=5, minutes=30))
+        current_data["updated_at"] = datetime.now(ist).replace(microsecond=0).isoformat()
         current_data["weights"] = weights
         current_data["week_accuracy"] = stats.get("accuracy_pct")
 

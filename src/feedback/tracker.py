@@ -100,17 +100,21 @@ class PredictionTracker:
             return 0.0
         return abs(actual_return_pct)
 
-    def get_accuracy_stats(self) -> dict[str, Any]:
+    def get_accuracy_stats(self, since: str | None = None) -> dict[str, Any]:
         with self._connect() as conn:
-            rows = conn.execute(
-                """
+            query = """
                 SELECT signal, actual_return_pct
                 FROM feedback_predictions
                 WHERE signal IN ('buy', 'sell', 'hold')
                   AND resolved = 1
                   AND actual_return_pct IS NOT NULL
-                """
-            ).fetchall()
+            """
+            params = []
+            if since:
+                query += " AND timestamp >= ?"
+                params.append(since)
+
+            rows = conn.execute(query, params).fetchall()
 
         total = len(rows)
         if total == 0:
