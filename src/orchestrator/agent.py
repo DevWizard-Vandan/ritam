@@ -11,6 +11,9 @@ from src.sentiment.scorer import score_headlines
 from src.feedback.loop import FeedbackLoop
 from src.feedback.tracker import PredictionTracker
 from src.config import settings
+from src.reasoning.analog_explainer import AnalogExplainer
+
+LATEST_EXPLANATION = ""
 
 @dataclass
 class OrchestratorResult:
@@ -18,6 +21,7 @@ class OrchestratorResult:
     sentiment_score: float
     top_analogs: list[dict]
     signal: str
+    explanation: str = ""
 
 
 class MarketOrchestrator:
@@ -32,6 +36,7 @@ class MarketOrchestrator:
         self.analog_top_n = analog_top_n
         self.tracker = tracker or PredictionTracker(settings.DB_PATH)
         self.loop = loop or FeedbackLoop(self.tracker)
+        self.explainer = AnalogExplainer()
 
     def run_cycle(self, last_candle: dict, recent_daily_candles: list[dict], vix: float = 15.0) -> OrchestratorResult:
         """
@@ -63,11 +68,18 @@ class MarketOrchestrator:
         top_analogs = find_analogs(recent_daily_candles, top_n=self.analog_top_n)
         signal = self._derive_signal(regime=regime, sentiment_score=sentiment_score)
 
+        explanation = self.explainer.explain(recent_daily_candles, top_analogs, regime, sentiment_score)
+        logger.info(f"Explanation: {explanation[:100]}...")
+
+        global LATEST_EXPLANATION
+        LATEST_EXPLANATION = explanation
+
         result = OrchestratorResult(
             regime=regime,
             sentiment_score=sentiment_score,
             top_analogs=top_analogs,
             signal=signal,
+            explanation=explanation,
         )
 
         timestamp = self.loop.record_prediction(result)
