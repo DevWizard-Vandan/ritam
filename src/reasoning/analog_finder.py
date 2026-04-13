@@ -165,3 +165,20 @@ def find_analogs(
 
     matches.sort(key=lambda item: item["similarity_score"], reverse=True)
     return matches[:top_n]
+
+
+class AnalogFinder:
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+
+    def find_analogs(
+        self,
+        current_window: list[dict],
+        top_n: int = 5,
+        symbol: str = settings.NIFTY_SYMBOL,
+    ) -> list[dict]:
+        return find_analogs(
+            current_window=current_window,
+            top_n=top_n,
+            symbol=symbol,
+        )
