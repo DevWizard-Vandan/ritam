@@ -15,12 +15,14 @@ from src.data.db import read_candles, get_connection
 from src.config import settings
 from src.feedback.tracker import PredictionTracker
 from src.feedback.loop import FeedbackLoop
+from src.learning import WeightUpdater
 from loguru import logger
 
 app = FastAPI(title="RITAM API", version="2.0")
 manager = WebSocketManager()
 tracker = PredictionTracker(settings.DB_PATH)
 loop = FeedbackLoop(tracker)
+updater = WeightUpdater(tracker)
 
 app.add_middleware(
     CORSMiddleware,
@@ -90,6 +92,16 @@ def get_agent_info():
         with open(weights_path) as f:
             return json.load(f)
     return {"weights": {}, "week_accuracy": None}
+
+
+@app.post("/api/learning/update-weights")
+def update_weights():
+    return updater.update_weights()
+
+
+@app.get("/api/learning/weights")
+def get_current_weights():
+    return updater.get_current_weights()
 
 
 @app.websocket("/ws/predictions")

@@ -69,7 +69,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 
 ## Up Next
 - [x] `task_007` - Feedback loop implemented
-- [ ] `task_008` - RL weight updater
+- [x] `task_008` - RL weight updater
 - [ ] `task_010` - Gemma reasoning layer
 - [ ] `task_011` - Analog agent integration
 

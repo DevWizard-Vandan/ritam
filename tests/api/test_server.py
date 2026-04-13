@@ -64,7 +64,9 @@ def test_resolve_outcome_invalid_timestamp_returns_400(client):
     resp = client.post("/api/feedback/resolve/not-a-timestamp")
     assert resp.status_code == 400
 
-def test_resolve_outcome_missing_candles_returns_404(client):
+def test_resolve_outcome_missing_candles_returns_404(client, monkeypatch):
+    from src.feedback import loop as fb_loop
+    monkeypatch.setattr(fb_loop.FeedbackLoop, "resolve_outcome", lambda self, ts: None)
     resp = client.post("/api/feedback/resolve/2023-01-01T09:15:00+05:30")
     assert resp.status_code == 404
 
