@@ -6,6 +6,15 @@ class OptionsChainAgent(AgentBase):
     # No API key needed — pure calculation
 
     def collect(self) -> dict:
+        fallback = {
+            "pcr": 1.0, 
+            "max_pain": 0, 
+            "underlying": 0,
+            "total_call_oi": 0, 
+            "total_put_oi": 0, 
+            "available": False,  # Ensure this is here
+        }   
+        
         """Scrapes NSE options chain for NIFTY."""
         import requests, time
         fallback = {
@@ -34,6 +43,11 @@ class OptionsChainAgent(AgentBase):
             )
             resp.raise_for_status()
             data = resp.json()
+            if "records" not in data or "data" not in data.get("records", {}):
+                logger.warning("OptionsChainAgent: NSE returned no records "
+                            "(market closed or holiday)")
+                return {"pcr": 1.0, "max_pain": None, 
+                        "underlying": 0, "available": False}
             records = data["records"]["data"]
 
             total_call_oi = sum(
