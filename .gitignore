@@ -39,6 +39,8 @@ models/
 .DS_Store
 Thumbs.db
 
+scripts/refresh_token.py
+
 # Test/Coverage
 .pytest_cache/
 .coverage
