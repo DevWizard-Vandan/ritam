@@ -42,6 +42,8 @@ class Settings:
     MARKET_CLOSE: str = "15:30"
     TIMEZONE: str = "Asia/Kolkata"
 
+    GLOBAL_MARKET_CACHE_TTL_MINUTES: int = 30
+
     # Intraday data config
     INTRADAY_SYMBOL: str = "NSE:NIFTY 50"
     INTRADAY_INTERVAL: str = "15minute"
