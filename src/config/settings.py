@@ -23,7 +23,7 @@ class Settings:
     GEMINI_API_KEY_7: str = os.getenv("GEMINI_API_KEY_7", "")   # Account G — overflow / fallback pool
 
     # Model names
-    GEMINI_FLASH_LITE_MODEL: str = "gemini-2.5-flash-lite-preview-06-17"
+    GEMINI_FLASH_LITE_MODEL: str = "gemini-2.5-flash-lite"
     GEMINI_FLASH_MODEL: str = "gemini-2.5-flash"
     GEMINI_PRO_MODEL: str = "gemini-2.5-pro"
     GEMINI_USE_PRO: bool = os.getenv("GEMINI_USE_PRO", "false").lower() == "true"
