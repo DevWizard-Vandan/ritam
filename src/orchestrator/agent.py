@@ -1,6 +1,7 @@
 """Simple market orchestrator that fuses sentiment, regime, and analog signals."""
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 
 from src.data.news_fetcher import fetch_headlines
@@ -14,6 +15,95 @@ from src.config import settings
 from src.reasoning.analog_explainer import AnalogExplainer
 
 LATEST_EXPLANATION = ""
+
+
+def _weighted_fallback(
+    agent_signals: list, regime: str
+) -> "AgentSignal":
+    """
+    Computes a weighted vote from all agent signals when
+    MacroSynthesisAgent is unavailable.
+
+    Weight rules:
+      FIIDerivativeAgent:    0.25  (strongest institutional signal)
+      MarketBreadthAgent:    0.20
+      TechnicalPatternAgent: 0.20
+      RegimeCrossCheckAgent: 0.15
+      NewsImpactAgent:       0.10
+      OptionsChainAgent:     0.05
+      SectorRotationAgent:   0.03
+      GlobalMarketAgent:     0.02
+      EconomicCalendarAgent: 0.00  (uncertainty flag only)
+    Default weight for unknown agents: 0.01
+    """
+    from src.agents.base import AgentSignal
+
+    WEIGHTS = {
+        "FIIDerivativeAgent": 0.25,
+        "MarketBreadthAgent": 0.20,
+        "TechnicalPatternAgent": 0.20,
+        "RegimeCrossCheckAgent": 0.15,
+        "NewsImpactAgent": 0.10,
+        "OptionsChainAgent": 0.05,
+        "SectorRotationAgent": 0.03,
+        "GlobalMarketAgent": 0.02,
+        "EconomicCalendarAgent": 0.00,
+    }
+
+    # Check for EconomicCalendarAgent uncertainty penalty
+    eco = next(
+        (s for s in agent_signals
+         if s.agent_name == "EconomicCalendarAgent"),
+        None
+    )
+    uncertainty_penalty = eco.confidence * 0.20 if eco else 0.0
+
+    weighted_sum = 0.0
+    total_weight = 0.0
+    for sig in agent_signals:
+        w = WEIGHTS.get(sig.agent_name, 0.01)
+        if w == 0.0:
+            continue
+        weighted_sum += sig.signal * sig.confidence * w
+        total_weight += w
+
+    if total_weight == 0:
+        raw_score = 0.0
+    else:
+        raw_score = weighted_sum / total_weight
+
+    # Crisis override
+    if regime == "crisis":
+        final_signal = -1
+        final_conf = 0.70
+        reasoning = (f"[Fallback] Crisis regime override. "
+                     f"Raw weighted score: {raw_score:.3f}")
+    elif raw_score > 0.15:
+        final_signal = 1
+        final_conf = min(abs(raw_score) * 0.8, 0.75)
+        reasoning = (f"[Fallback] Weighted bullish: {raw_score:.3f}. "
+                     f"Regime: {regime}")
+    elif raw_score < -0.15:
+        final_signal = -1
+        final_conf = min(abs(raw_score) * 0.8, 0.75)
+        reasoning = (f"[Fallback] Weighted bearish: {raw_score:.3f}. "
+                     f"Regime: {regime}")
+    else:
+        final_signal = 0
+        final_conf = 0.30
+        reasoning = (f"[Fallback] Weighted neutral: {raw_score:.3f}. "
+                     f"Regime: {regime}")
+
+    # Apply uncertainty penalty
+    final_conf = max(0.10, final_conf - uncertainty_penalty)
+
+    return AgentSignal(
+        agent_name="WeightedFallback",
+        signal=final_signal,
+        confidence=round(final_conf, 3),
+        reasoning=reasoning,
+        raw_data={"raw_score": raw_score, "regime": regime}
+    )
 
 @dataclass
 class OrchestratorResult:
@@ -125,24 +215,28 @@ class MarketOrchestrator:
         top_analogs = find_analogs(recent_daily_candles, top_n=self.analog_top_n)
 
         from src.agents.factory import build_agents, build_synthesis_agent
-        from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
         agents = build_agents()
         agent_signals = []
         with ThreadPoolExecutor(max_workers=6) as executor:
-            futures = {executor.submit(a.run): a.name for a in agents}
-            try:
-                for future in as_completed(futures, timeout=30):
-                    try:
-                        agent_signals.append(future.result())
-                    except Exception as e:
-                        logger.warning(f"Agent {futures[future]} failed: {e}")
-            except TimeoutError:
-                logger.warning("Timed out waiting for all agents — continuing with partial results")
-                for future, agent_name in futures.items():
-                    if not future.done():
-                        future.cancel()
-                        logger.warning(f"Agent {agent_name} cancelled due to timeout")
+            futures = {executor.submit(a.run): a for a in agents}
+            deadline = time.time() + 28  # 28s hard budget for all agents
+
+            for future, agent in list(futures.items()):
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    logger.warning(f"Agent {agent.name} skipped — deadline exceeded")
+                    future.cancel()
+                    continue
+                try:
+                    result = future.result(timeout=remaining)
+                    agent_signals.append(result)
+                except TimeoutError:
+                    logger.warning(f"Agent {agent.name} timed out")
+                    future.cancel()
+                except Exception as e:
+                    logger.warning(f"Agent {agent.name} failed: {e}")
 
         synth_agent = build_synthesis_agent()
         analog_summary = (
@@ -156,6 +250,16 @@ class MarketOrchestrator:
             "regime": regime,
             "analog_summary": analog_summary,
         })
+
+        # If synthesis failed (empty response / exhausted keys)
+        # compute weighted signal from agent signals directly
+        if synthesis.confidence < 0.15 or (
+            synthesis.signal == 0 and synthesis.confidence <= 0.1
+        ):
+            synthesis = _weighted_fallback(agent_signals, regime)
+            logger.warning(
+                "MacroSynthesis failed — using weighted agent fallback"
+            )
 
         if synthesis.signal == 1:
             signal = "buy"

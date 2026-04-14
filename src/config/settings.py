@@ -28,6 +28,14 @@ class Settings:
     GEMINI_PRO_MODEL: str = "gemini-2.5-pro"
     GEMINI_USE_PRO: bool = os.getenv("GEMINI_USE_PRO", "false").lower() == "true"
 
+    # RPM limits per model (free tier) — used for logging/monitoring
+    GEMINI_FLASH_LITE_RPM: int = 15
+    GEMINI_FLASH_RPM: int = 5
+    # Force Flash-Lite for all cycle agents (override during testing)
+    GEMINI_FORCE_FLASH_LITE: bool = os.getenv(
+        "GEMINI_FORCE_FLASH_LITE", "true"
+    ).lower() == "true"
+
     # Scheduler config
     CYCLE_INTERVAL_MINUTES: int = 5
     MARKET_OPEN_TIME: str = "09:15"   # IST

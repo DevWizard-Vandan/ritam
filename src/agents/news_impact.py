@@ -31,7 +31,7 @@ class NewsImpactAgent(AgentBase):
 
         headlines_text = "\n".join(f"- {h}" for h in headlines[:15])
         model = (settings.GEMINI_PRO_MODEL if settings.GEMINI_USE_PRO
-                 else settings.GEMINI_FLASH_MODEL)
+                 else settings.GEMINI_FLASH_LITE_MODEL)
         prompt = f"""You are a market analyst. FinBERT sentiment score: {sentiment:.4f}
 (-1 = very negative, +1 = very positive).
 

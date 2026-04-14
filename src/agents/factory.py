@@ -29,6 +29,7 @@ def build_agents() -> list[AgentBase]:
 
     news = NewsImpactAgent()
     news.assigned_api_key = settings.GEMINI_API_KEY_5
+    news.timeout_seconds = 25
     agents.append(news)
 
     regime_xc = RegimeCrossCheckAgent()
