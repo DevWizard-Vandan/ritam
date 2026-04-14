@@ -1,7 +1,7 @@
 """Simple market orchestrator that fuses sentiment, regime, and analog signals."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.data.news_fetcher import fetch_headlines
 from loguru import logger
@@ -22,7 +22,7 @@ class OrchestratorResult:
     top_analogs: list[dict]
     signal: str
     explanation: str = ""
-    agent_signals: list = None
+    agent_signals: list[dict] = field(default_factory=list)
     synthesis_reasoning: str = ""
     final_confidence: float = 0.0
     source: str = "daily"
@@ -42,38 +42,67 @@ class MarketOrchestrator:
         self.loop = loop or FeedbackLoop(self.tracker)
         self.explainer = AnalogExplainer()
 
-    def run_cycle(self, last_candle: dict, recent_daily_candles: list[dict], vix: float = 15.0) -> OrchestratorResult:
+    def run_cycle(
+        self,
+        last_candle: dict | None = None,
+        recent_daily_candles: list[dict] | None = None,
+        vix: float = 15.0,
+    ) -> OrchestratorResult:
         """
         Run one orchestration cycle.
 
         Args:
             last_candle: Latest candle with at least `price_change_pct`.
-            recent_daily_candles: Last 20 daily candles used for analog matching.
+                         Optional — auto-fetched from intraday DB when USE_INTRADAY=True.
+            recent_daily_candles: Last 20 daily candles for analog matching.
+                                  Optional — auto-fetched when USE_INTRADAY=True.
             vix: Current India VIX estimate.
         """
+        source = "daily"
+
         if settings.USE_INTRADAY:
             from src.data.db import read_intraday_candles
             intraday_candles = read_intraday_candles(
                 settings.INTRADAY_SYMBOL,
-                limit=settings.INTRADAY_CANDLES_FOR_ANALOG + 5
+                limit=settings.INTRADAY_CANDLES_FOR_ANALOG + 5,
             )
             if len(intraday_candles) < 10:
                 logger.warning("Insufficient intraday candles — falling back to daily")
-                source = "daily"
             else:
                 source = "intraday"
-
-                # compute price_change_pct from intraday candles
                 if len(intraday_candles) >= 2:
                     prev_close = intraday_candles[-2]["close"]
                     curr_close = intraday_candles[-1]["close"]
-                    price_change = ((curr_close - prev_close) / prev_close * 100) if prev_close else 0.0
+                    price_change = (
+                        (curr_close - prev_close) / prev_close * 100
+                        if prev_close else 0.0
+                    )
                 else:
                     price_change = 0.0
                 last_candle = intraday_candles[-1].copy()
                 last_candle["price_change_pct"] = price_change
-        else:
-            source = "daily"
+                recent_daily_candles = intraday_candles[-(settings.INTRADAY_CANDLES_FOR_ANALOG):]
+
+        # Final fallback: if still None (daily mode or intraday fallback), fetch daily candles
+        if last_candle is None or recent_daily_candles is None:
+            from src.data.db import read_candles
+            from datetime import date, timedelta
+            to_date = str(date.today())
+            from_date = str(date.today() - timedelta(days=120))
+            daily = read_candles(settings.INTRADAY_SYMBOL, from_date, to_date)
+            if not daily:
+                logger.error("No daily candles available — cannot run cycle")
+                raise RuntimeError("No candle data available for run_cycle()")
+            if last_candle is None:
+                last_candle = daily[-1].copy()
+                if "price_change_pct" not in last_candle and len(daily) >= 2:
+                    prev = daily[-2]["close"]
+                    curr = daily[-1]["close"]
+                    last_candle["price_change_pct"] = (
+                        (curr - prev) / prev * 100 if prev else 0.0
+                    )
+            if recent_daily_candles is None:
+                recent_daily_candles = daily[-20:]
 
         headlines = fetch_headlines()
         scored = score_headlines(headlines)
@@ -96,27 +125,36 @@ class MarketOrchestrator:
         top_analogs = find_analogs(recent_daily_candles, top_n=self.analog_top_n)
 
         from src.agents.factory import build_agents, build_synthesis_agent
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 
         agents = build_agents()
         agent_signals = []
         with ThreadPoolExecutor(max_workers=6) as executor:
             futures = {executor.submit(a.run): a.name for a in agents}
-            for future in as_completed(futures, timeout=30):
-                try:
-                    agent_signals.append(future.result())
-                except Exception as e:
-                    logger.warning(f"Agent {futures[future]} timed out: {e}")
+            try:
+                for future in as_completed(futures, timeout=30):
+                    try:
+                        agent_signals.append(future.result())
+                    except Exception as e:
+                        logger.warning(f"Agent {futures[future]} failed: {e}")
+            except TimeoutError:
+                logger.warning("Timed out waiting for all agents — continuing with partial results")
+                for future, agent_name in futures.items():
+                    if not future.done():
+                        future.cancel()
+                        logger.warning(f"Agent {agent_name} cancelled due to timeout")
 
         synth_agent = build_synthesis_agent()
-        analog_summary = (f"Top analog: {top_analogs[0]['start_date']} "
-                          f"similarity={top_analogs[0]['similarity_score']:.3f} "
-                          f"5d_return={top_analogs[0]['next_5day_return']:.2f}%"
-                          if top_analogs else "No analogs found")
+        analog_summary = (
+            f"Top analog: {top_analogs[0]['start_date']} "
+            f"similarity={top_analogs[0]['similarity_score']:.3f} "
+            f"5d_return={top_analogs[0]['next_5day_return']:.2f}%"
+            if top_analogs else "No analogs found"
+        )
         synthesis = synth_agent.reason({
             "agent_signals": agent_signals,
             "regime": regime,
-            "analog_summary": analog_summary
+            "analog_summary": analog_summary,
         })
 
         if synthesis.signal == 1:
@@ -148,7 +186,7 @@ class MarketOrchestrator:
             agent_signals=[s.__dict__ for s in agent_signals],
             synthesis_reasoning=synthesis.reasoning,
             final_confidence=final_confidence,
-            source=source
+            source=source,
         )
 
         timestamp = self.loop.record_prediction(result)
