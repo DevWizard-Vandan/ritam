@@ -12,7 +12,7 @@ class NewsImpactAgent(AgentBase):
         headlines = fetch_headlines()
         scored = score_headlines(headlines[:20])  # list of dicts with 'score' key
         avg_sentiment = (
-            sum(r["score"] for r in scored) / len(scored) if scored else 0.0
+            sum(r.get("score", 0.0) for r in scored) / len(scored) if scored else 0.0
         )
         return {
             "headlines": headlines[:20],
