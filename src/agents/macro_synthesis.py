@@ -34,7 +34,7 @@ class MacroSynthesisAgent(AgentBase):
             for s in agent_signals
         )
         model = (settings.GEMINI_PRO_MODEL if settings.GEMINI_USE_PRO
-                 else settings.GEMINI_FLASH_MODEL)
+                 else settings.GEMINI_FLASH_LITE_MODEL)
         prompt = f"""You are a quantitative market analyst synthesizing multiple signals
 for a Nifty 50 intraday prediction.
 
