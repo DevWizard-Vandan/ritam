@@ -13,20 +13,47 @@ class GlobalMarketAgent(AgentBase):
 
     def collect(self) -> dict:
         import yfinance as yf
+        import time
+        tickers_str = " ".join(self.TICKERS.values())
+
+        data = None
+        for attempt in range(3):
+            try:
+                data = yf.download(
+                    tickers=tickers_str,
+                    period="5d",
+                    interval="1d",
+                    group_by="ticker",
+                    auto_adjust=True,
+                    progress=False,
+                    threads=False,
+                )
+                break
+            except Exception as e:
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
+                else:
+                    logger.warning(
+                        "GlobalMarketAgent: yfinance rate-limited, using neutral"
+                    )
+                    return {k: 0.0 for k in self.TICKERS}
+
+        if data is None or data.empty:
+            logger.warning("GlobalMarketAgent: yfinance rate-limited, using neutral")
+            return {k: 0.0 for k in self.TICKERS}
+
         results = {}
         for name, ticker in self.TICKERS.items():
             try:
-                t = yf.Ticker(ticker)
-                hist = t.history(period="2d", interval="1d")
-                if len(hist) >= 2:
-                    prev_close = hist["Close"].iloc[-2]
-                    last_close = hist["Close"].iloc[-1]
-                    pct_change = (last_close - prev_close) / prev_close * 100
-                    results[name] = round(pct_change, 3)
+                close = data[ticker]["Close"].dropna()
+                if len(close) >= 2:
+                    pct_change = (
+                        (close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100
+                    )
+                    results[name] = round(float(pct_change), 3)
                 else:
                     results[name] = 0.0
-            except Exception as e:
-                logger.warning(f"GlobalMarketAgent: {ticker} failed: {e}")
+            except KeyError:
                 results[name] = 0.0
         return results
 

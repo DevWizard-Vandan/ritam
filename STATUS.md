@@ -57,6 +57,11 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 - [x] `frontend/` — React + Vite + TypeScript dashboard with Tailwind CSS (4 panels: Signal, Accuracy, Analogs, Explanation)
 - [x] `frontend/README.md` — dashboard setup and usage guide
 - [x] Root `README.md` updated with Frontend section
+- [x] Hotfix: 3 agent runtime errors resolved
+  - `SectorRotationAgent`: replaced missing `get_kite` with correct `get_client`; wrapped `collect()` in try/except for graceful degradation
+  - `OptionsChainAgent`: robust warm-up headers, full try/except fallback with `available` flag, fixed max_pain comment
+  - `MarketBreadthAgent`: multi-endpoint fallback, Content-Type check, `isinstance` guard for string items, `available` flag
+  - `GlobalMarketAgent`: replaced per-ticker loop with batch `yf.download` + exponential backoff (3 attempts)
 
 ---
 
@@ -66,7 +71,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 ---
 
 ## Blocked / Issues
-- None
+- `tests/api/test_server.py::test_candles_endpoint_returns_200` — pre-existing failure (candles table not initialised in test DB, unrelated to agent hotfix)
 
 ---
 
