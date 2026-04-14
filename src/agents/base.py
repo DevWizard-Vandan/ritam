@@ -20,7 +20,7 @@ class AgentBase(ABC):
 
     def _gemini_call(self, prompt: str, model_name: str) -> str:
         """Makes Gemini call with assigned key, falls back to key 7."""
-        from src.config.settings import settings
+        from src.config import settings
         keys_to_try = [self.assigned_api_key, settings.GEMINI_API_KEY_7]
         for key in keys_to_try:
             if not key:

@@ -5,9 +5,12 @@ import datetime as dt
 
 import src.api.server
 from src.api.server import app, run_scheduled_cycle, resolve_outcomes_job, weight_update_job, scheduler_job_status
-from src.config.settings import settings
+from src.config import settings
 
-client = TestClient(app)
+@pytest.fixture
+def test_client():
+    with TestClient(app) as client:
+        yield client
 
 @pytest.fixture(autouse=True)
 def reset_status():
@@ -15,7 +18,7 @@ def reset_status():
     yield
     scheduler_job_status.clear()
 
-def test_scheduler_status_endpoint_enabled():
+def test_scheduler_status_endpoint_enabled(test_client):
     with patch("src.api.server.settings.SCHEDULER_ENABLED", True):
         # The scheduler gets started during app startup if SCHEDULER_ENABLED is True,
         # but in test we can mock get_jobs
@@ -29,7 +32,7 @@ def test_scheduler_status_endpoint_enabled():
 
             scheduler_job_status["market_cycle"] = "success"
 
-            response = client.get("/api/scheduler/status")
+            response = test_client.get("/api/scheduler/status")
             assert response.status_code == 200
             data = response.json()
 
@@ -39,9 +42,9 @@ def test_scheduler_status_endpoint_enabled():
             assert data["jobs"][0]["last_status"] == "success"
             assert data["jobs"][0]["next_run_time"] == "2026-04-14T09:15:00+05:30"
 
-def test_scheduler_status_endpoint_disabled():
+def test_scheduler_status_endpoint_disabled(test_client):
     with patch("src.api.server.settings.SCHEDULER_ENABLED", False):
-        response = client.get("/api/scheduler/status")
+        response = test_client.get("/api/scheduler/status")
         assert response.status_code == 200
         data = response.json()
         assert data["scheduler_enabled"] is False

@@ -102,24 +102,34 @@ def startup_event():
         scheduler.add_job(
             run_scheduled_cycle,
             trigger=IntervalTrigger(minutes=settings.CYCLE_INTERVAL_MINUTES),
-            id="market_cycle"
+            id="market_cycle",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
         )
         scheduler.add_job(
             resolve_outcomes_job,
             trigger=CronTrigger(hour=9, minute=0, timezone="Asia/Kolkata"),
-            id="outcome_resolver"
+            id="outcome_resolver",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
         )
         scheduler.add_job(
             weight_update_job,
             trigger=CronTrigger(day_of_week="sun", hour=0, minute=0, timezone="Asia/Kolkata"),
-            id="weight_updater"
+            id="weight_updater",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
         )
-        scheduler.start()
-        logger.info("Scheduler started.")
+        if not scheduler.running:
+            scheduler.start()
+            logger.info("Scheduler started.")
 
 @app.on_event("shutdown")
 def shutdown_event():
-    if settings.SCHEDULER_ENABLED:
+    if settings.SCHEDULER_ENABLED and scheduler.running:
         scheduler.shutdown(wait=False)
         logger.info("Scheduler shutdown.")
 
