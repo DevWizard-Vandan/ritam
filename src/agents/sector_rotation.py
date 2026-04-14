@@ -22,10 +22,10 @@ class SectorRotationAgent(AgentBase):
 
     def collect(self) -> dict:
         """Uses KiteConnect quote API."""
-        from src.data.kite_client import get_kite
-        kite = get_kite()
-        symbols = list(self.SECTORS.values())
         try:
+            from src.data.kite_client import get_client
+            kite = get_client()
+            symbols = list(self.SECTORS.values())
             quotes = kite.quote(symbols)
             result = {}
             for name, sym in self.SECTORS.items():
