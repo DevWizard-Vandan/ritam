@@ -10,7 +10,7 @@ feedparser==6.0.11
 
 # Market Data
 kiteconnect>=5.0.1
-yfinance==0.2.54
+yfinance>=0.2.40
 kiteconnect
 
 # Sentiment / NLP
