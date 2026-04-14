@@ -95,7 +95,24 @@ def write_candles(symbol: str, candles: list[dict]):
 
 
 def read_candles(symbol: str, from_date: str, to_date: str, limit: int = None) -> list[dict]:
-    """Read OHLCV candles for a symbol between two ISO date strings."""
+    """Read OHLCV candles for a symbol between two ISO date strings.
+
+    Args:
+        symbol: Instrument identifier (e.g. ``"NSE:NIFTY 50"``).
+        from_date: ISO-8601 datetime string for the start of the range (inclusive).
+        to_date:   ISO-8601 datetime string for the end of the range (inclusive).
+        limit:     When provided, return only the most-recent *limit* candles
+                   within the date range, ordered ascending by timestamp.
+                   Must be a positive integer; raises ``ValueError`` otherwise.
+
+    Returns:
+        List of candle dicts with keys:
+        ``timestamp_ist``, ``open``, ``high``, ``low``, ``close``, ``volume``.
+    """
+    if limit is not None:
+        if not isinstance(limit, int) or limit <= 0:
+            raise ValueError(f"limit must be a positive integer, got {limit!r}")
+
     with get_connection() as conn:
         query = """
             SELECT timestamp_ist, open, high, low, close, volume
@@ -105,7 +122,7 @@ def read_candles(symbol: str, from_date: str, to_date: str, limit: int = None) -
         params = [symbol, from_date, to_date]
 
         if limit is not None:
-            query = f"""
+            query = """
                 SELECT * FROM (
                     SELECT timestamp_ist, open, high, low, close, volume
                     FROM candles WHERE symbol=? AND timestamp_ist BETWEEN ? AND ?

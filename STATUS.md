@@ -72,7 +72,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 
 ## Up Next
 - [x] L0: Gemini dual-key routing ✅ merged PR #31
-- [x] L1: Scheduler + 7-key expansion + agent scaffold ✅ merged
+- [ ] L1: Scheduler + 7-key expansion + agent scaffold — open PR #32
 - [ ] L2: Macro agents — in progress (scaffold ready)
 - [x] `task_007` - Feedback loop implemented
 - [x] `task_008` - RL weight updater

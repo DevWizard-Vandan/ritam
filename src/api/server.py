@@ -6,6 +6,7 @@ Run with: uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --reload
 """
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -22,12 +23,6 @@ from src.learning import WeightUpdater
 from loguru import logger
 from src.reasoning.analog_finder import AnalogFinder
 import datetime as dt
-
-app = FastAPI(title="RITAM API", version="2.0")
-manager = WebSocketManager()
-tracker = PredictionTracker(settings.DB_PATH)
-loop = FeedbackLoop(tracker)
-updater = WeightUpdater(tracker)
 
 scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
 scheduler_job_status = {}
@@ -63,9 +58,20 @@ def run_scheduled_cycle():
             scheduler_job_status["market_cycle"] = "failed"
             return
 
+        # Compute price_change_pct for the most recent candle from the preceding close.
+        last_candle = dict(candles[-1])
+        if len(candles) >= 2:
+            prev_close = candles[-2]["close"]
+            curr_close = last_candle["close"]
+            last_candle["price_change_pct"] = (
+                ((curr_close - prev_close) / prev_close * 100) if prev_close else 0.0
+            )
+        else:
+            last_candle["price_change_pct"] = 0.0
+
         o = MarketOrchestrator()
         result = o.run_cycle(
-            last_candle=candles[-1],
+            last_candle=last_candle,
             recent_daily_candles=candles[-20:]
         )
         logger.info(f"Scheduled cycle complete: {result.signal} "
@@ -96,8 +102,8 @@ def weight_update_job():
         logger.error(f"Weight update failed: {e}", exc_info=True)
         scheduler_job_status["weight_updater"] = "failed"
 
-@app.on_event("startup")
-def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     if settings.SCHEDULER_ENABLED:
         scheduler.add_job(
             run_scheduled_cycle,
@@ -105,7 +111,7 @@ def startup_event():
             id="market_cycle",
             replace_existing=True,
             max_instances=1,
-            coalesce=True
+            coalesce=True,
         )
         scheduler.add_job(
             resolve_outcomes_job,
@@ -113,7 +119,7 @@ def startup_event():
             id="outcome_resolver",
             replace_existing=True,
             max_instances=1,
-            coalesce=True
+            coalesce=True,
         )
         scheduler.add_job(
             weight_update_job,
@@ -121,17 +127,21 @@ def startup_event():
             id="weight_updater",
             replace_existing=True,
             max_instances=1,
-            coalesce=True
+            coalesce=True,
         )
         if not scheduler.running:
             scheduler.start()
             logger.info("Scheduler started.")
-
-@app.on_event("shutdown")
-def shutdown_event():
-    if settings.SCHEDULER_ENABLED and scheduler.running:
+    yield
+    if scheduler.running:
         scheduler.shutdown(wait=False)
         logger.info("Scheduler shutdown.")
+
+app = FastAPI(title="RITAM API", version="2.0", lifespan=lifespan)
+manager = WebSocketManager()
+tracker = PredictionTracker(settings.DB_PATH)
+loop = FeedbackLoop(tracker)
+updater = WeightUpdater(tracker)
 
 app.add_middleware(
     CORSMiddleware,

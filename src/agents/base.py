@@ -22,7 +22,7 @@ class AgentBase(ABC):
         """Makes Gemini call with assigned key, falls back to key 7."""
         from src.config import settings
         keys_to_try = [self.assigned_api_key, settings.GEMINI_API_KEY_7]
-        for key in keys_to_try:
+        for slot, key in enumerate(keys_to_try, start=1):
             if not key:
                 continue
             try:
@@ -32,7 +32,7 @@ class AgentBase(ABC):
                 return response.text.strip()
             except Exception as e:
                 logger.warning(f"{self.name} Gemini call failed "
-                               f"(key ending ...{key[-4:]}): {e}")
+                               f"(key slot {slot}): {e}")
         logger.error(f"{self.name}: all API keys exhausted")
         return ""
 

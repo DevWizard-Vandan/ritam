@@ -97,10 +97,9 @@ def test_run_scheduled_cycle_inside_market_hours(mock_orchestrator_class, mock_r
         mock_instance.run_cycle.return_value = MagicMock(signal="buy", regime="bull", sentiment_score=0.8)
         mock_orchestrator_class.return_value = mock_instance
 
-        # Ensure we patch the import inside src.api.server
-        with patch("src.api.server.MarketOrchestrator", mock_orchestrator_class, create=True):
-            with patch("src.data.db.read_candles", mock_read_candles):
-                run_scheduled_cycle()
+        # run_scheduled_cycle imports MarketOrchestrator from src.orchestrator.agent
+        with patch("src.data.db.read_candles", mock_read_candles):
+            run_scheduled_cycle()
 
         assert scheduler_job_status["market_cycle"] == "success"
         mock_instance.run_cycle.assert_called_once()
