@@ -1,25 +1,30 @@
-from dataclasses import dataclass, field
-from abc import ABC, abstractmethod
-from typing import Any
-import google.generativeai as genai
-from loguru import logger
+import sys
 
-@dataclass
-class AgentSignal:
-    agent_name: str
-    signal: int          # -1 bearish, 0 neutral, +1 bullish
-    confidence: float    # 0.0 to 1.0
-    reasoning: str
-    raw_data: dict = field(default_factory=dict)
+with open('src/agents/base.py', 'r') as f:
+    content = f.read()
 
-class AgentBase(ABC):
-    """Base class for all Ritam intelligence agents."""
-    name: str = "BaseAgent"
-    assigned_api_key: str = ""
-    fallback_api_key: str = ""   # Key 7 overflow
+import re
 
-    def _gemini_call(self, prompt: str, model_name: str) -> str:
-        """Makes Gemini call with assigned key, falls back to key 7."""
+search_block = """    def _gemini_call(self, prompt: str, model_name: str) -> str:
+        \"\"\"Makes Gemini call with assigned key, falls back to key 7.\"\"\"
+        from src.config import settings
+        keys_to_try = [self.assigned_api_key, settings.GEMINI_API_KEY_7]
+        for slot, key in enumerate(keys_to_try, start=1):
+            if not key:
+                continue
+            try:
+                genai.configure(api_key=key)
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content(prompt)
+                return response.text.strip()
+            except Exception as e:
+                logger.warning(f"{self.name} Gemini call failed "
+                               f"(key slot {slot}): {e}")
+        logger.error(f"{self.name}: all API keys exhausted")
+        return "" """
+
+replace_block = """    def _gemini_call(self, prompt: str, model_name: str) -> str:
+        \"\"\"Makes Gemini call with assigned key, falls back to key 7.\"\"\"
         import re, time
         from src.config import settings
         keys_to_try = [self.assigned_api_key, settings.GEMINI_API_KEY_7]
@@ -57,30 +62,12 @@ class AgentBase(ABC):
                         break  # try next key
 
         logger.error(f"{self.name}: all API keys exhausted")
-        return ""
+        return "" """
 
-    @abstractmethod
-    def collect(self) -> dict[str, Any]:
-        """Fetch raw data. No Gemini calls here."""
-        ...
-
-    @abstractmethod
-    def reason(self, data: dict[str, Any]) -> AgentSignal:
-        """Produce a signal from collected data."""
-        ...
-
-    def run(self) -> AgentSignal:
-        """Full agent execution: collect → reason → return signal."""
-        try:
-            data = self.collect()
-            signal = self.reason(data)
-            logger.info(f"{self.name}: signal={signal.signal} "
-                        f"confidence={signal.confidence:.2f}")
-            return signal
-        except Exception as e:
-            logger.error(f"{self.name} failed: {e}", exc_info=True)
-            return AgentSignal(
-                agent_name=self.name,
-                signal=0, confidence=0.0,
-                reasoning=f"Agent failed: {str(e)}"
-            )
+if search_block.strip() in content:
+    content = content.replace(search_block.strip(), replace_block.strip())
+    with open('src/agents/base.py', 'w') as f:
+        f.write(content)
+    print("Replaced base successfully")
+else:
+    print("Search block not found")

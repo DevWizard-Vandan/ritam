@@ -1,11 +1,14 @@
 import time
+from datetime import datetime, timedelta
 import yfinance as yf
 from loguru import logger
 from src.agents.base import AgentBase, AgentSignal
+from src.config import settings
 
 # Global cache to persist across collection cycles
-_cache: dict = {"data": None, "fetched_at": 0}
-CACHE_TTL_SECONDS = 900  # 15 minutes — refresh every 3 cycles
+_cache: dict = {}
+_cache_ts: datetime | None = None
+CACHE_TTL_MINUTES: int = 30
 
 class GlobalMarketAgent(AgentBase):
     name = "GlobalMarketAgent"
@@ -18,13 +21,13 @@ class GlobalMarketAgent(AgentBase):
     }
 
     def collect(self) -> dict:
-        global _cache
-        now = time.time()
+        global _cache, _cache_ts
+        now = datetime.now()
 
         # Return cached data if it's still fresh
-        if _cache["data"] and (now - _cache["fetched_at"]) < CACHE_TTL_SECONDS:
+        if _cache and _cache_ts and (now - _cache_ts) < timedelta(minutes=CACHE_TTL_MINUTES):
             logger.debug("GlobalMarketAgent: using cached data")
-            return _cache["data"]
+            return _cache
 
         tickers_str = " ".join(self.TICKERS.values())
         data = None
@@ -66,20 +69,18 @@ class GlobalMarketAgent(AgentBase):
                     results[name] = 0.0
 
             # Update cache on success
-            _cache = {"data": results, "fetched_at": now}
+            _cache = results
+            _cache_ts = now
             return results
 
         except Exception as e:
             # On rate limit or error — return last cached if available
-            if _cache["data"]:
-                logger.warning(
-                    f"GlobalMarketAgent: rate limited or error, "
-                    f"using cached data from {int((now - _cache['fetched_at'])/60)}m ago"
-                )
-                return _cache["data"]
-            
-            logger.error(f"GlobalMarketAgent: fetch failed and no cache available: {e}")
-            return {k: 0.0 for k in self.TICKERS}
+            if _cache:
+                logger.warning("yfinance rate limited — using cached data")
+                return _cache
+            else:
+                logger.error("GlobalMarketAgent: no cache + rate limited")
+                return {k: 0.0 for k in self.TICKERS}
 
     def reason(self, data: dict) -> AgentSignal:
         positives = sum(1 for v in data.values() if v > 0.2)

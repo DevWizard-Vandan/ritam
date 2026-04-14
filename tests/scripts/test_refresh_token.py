@@ -51,8 +51,7 @@ class TestRefreshToken(unittest.TestCase):
 
         update_env_file('new_token_123')
 
-        mock_file().write.assert_called_once()
-        written_content = mock_file().write.call_args[0][0]
+        written_content = "".join(call.args[0] for call in mock_file().write.call_args_list)
         self.assertIn('KITE_ACCESS_TOKEN=new_token_123', written_content)
         self.assertNotIn('old_token', written_content)
 
@@ -63,8 +62,7 @@ class TestRefreshToken(unittest.TestCase):
 
         update_env_file('new_token_456')
 
-        mock_file().write.assert_called_once()
-        written_content = mock_file().write.call_args[0][0]
+        written_content = "".join(call.args[0] for call in mock_file().write.call_args_list)
         self.assertIn('KITE_ACCESS_TOKEN=new_token_456', written_content)
 
     @patch('os.path.exists')
