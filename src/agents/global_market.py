@@ -1,4 +1,4 @@
-import time
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from datetime import datetime, timedelta
 import yfinance as yf
 from loguru import logger
@@ -10,6 +10,9 @@ _cache: dict = {}
 _cache_ts: datetime | None = None
 CACHE_TTL_MINUTES: int = 30
 
+_BATCH_TIMEOUT_SECONDS: int = 5    # total budget for all tickers
+
+
 class GlobalMarketAgent(AgentBase):
     name = "GlobalMarketAgent"
 
@@ -20,6 +23,16 @@ class GlobalMarketAgent(AgentBase):
         "DowFutures": "YM=F",
     }
 
+    def _fetch_one(self, name: str, ticker: str) -> tuple[str, float]:
+        """Fetch a single ticker's daily % change."""
+        t = yf.Ticker(ticker)
+        hist = t.history(period="2d", interval="1d")
+        if len(hist) >= 2:
+            prev = hist["Close"].iloc[-2]
+            last = hist["Close"].iloc[-1]
+            return name, round((last - prev) / prev * 100, 3)
+        return name, 0.0
+
     def collect(self) -> dict:
         global _cache, _cache_ts
         now = datetime.now()
@@ -29,58 +42,44 @@ class GlobalMarketAgent(AgentBase):
             logger.debug("GlobalMarketAgent: using cached data")
             return _cache
 
-        tickers_str = " ".join(self.TICKERS.values())
-        data = None
+        results: dict[str, float] = {}
 
         try:
-            for attempt in range(3):
+            with ThreadPoolExecutor(max_workers=4) as ex:
+                futs = {
+                    ex.submit(self._fetch_one, name, ticker): name
+                    for name, ticker in self.TICKERS.items()
+                }
                 try:
-                    data = yf.download(
-                        tickers=tickers_str,
-                        period="5d",
-                        interval="1d",
-                        group_by="ticker",
-                        auto_adjust=True,
-                        progress=False,
-                        threads=False,
-                    )
-                    if data is not None and not data.empty:
-                        break
-                except Exception:
-                    if attempt < 2:
-                        time.sleep(2 ** attempt)
-                    else:
-                        raise  # Final attempt failed, move to exception handler
+                    for fut in as_completed(futs, timeout=_BATCH_TIMEOUT_SECONDS):
+                        name = futs[fut]
+                        try:
+                            fetched_name, val = fut.result()
+                            results[fetched_name] = val
+                        except Exception:
+                            results[name] = 0.0
+                except TimeoutError:
+                    logger.warning("GlobalMarketAgent: yfinance batch timeout")
+                    for name in self.TICKERS:
+                        results.setdefault(name, 0.0)
 
-            if data is None or data.empty:
-                raise ValueError("No data returned from yfinance")
+            # Fill any tickers that didn't complete
+            for name in self.TICKERS:
+                results.setdefault(name, 0.0)
 
-            # Process the raw data into percentage changes
-            results = {}
-            for name, ticker in self.TICKERS.items():
-                try:
-                    close = data[ticker]["Close"].dropna()
-                    if len(close) >= 2:
-                        pct_change = (close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100
-                        results[name] = round(float(pct_change), 3)
-                    else:
-                        results[name] = 0.0
-                except KeyError:
-                    results[name] = 0.0
+            # Update module-level cache if we got real data
+            if any(v != 0.0 for v in results.values()):
+                _cache = results
+                _cache_ts = now
 
-            # Update cache on success
-            _cache = results
-            _cache_ts = now
             return results
 
         except Exception as e:
-            # On rate limit or error — return last cached if available
+            logger.error(f"GlobalMarketAgent: unexpected error: {e}")
             if _cache:
-                logger.warning("yfinance rate limited — using cached data")
+                logger.warning("GlobalMarketAgent: falling back to cache")
                 return _cache
-            else:
-                logger.error("GlobalMarketAgent: no cache + rate limited")
-                return {k: 0.0 for k in self.TICKERS}
+            return {k: 0.0 for k in self.TICKERS}
 
     def reason(self, data: dict) -> AgentSignal:
         positives = sum(1 for v in data.values() if v > 0.2)
