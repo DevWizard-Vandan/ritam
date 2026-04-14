@@ -1,7 +1,6 @@
 """Simple market orchestrator that fuses sentiment, regime, and analog signals."""
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
 
 from src.data.news_fetcher import fetch_headlines
@@ -226,28 +225,46 @@ class MarketOrchestrator:
         top_analogs = find_analogs(recent_daily_candles, top_n=self.analog_top_n)
 
         from src.agents.factory import build_agents, build_synthesis_agent
-        from concurrent.futures import ThreadPoolExecutor, TimeoutError
+        from concurrent.futures import ThreadPoolExecutor, Future, as_completed, TimeoutError
 
         agents = build_agents()
         agent_signals = []
         with ThreadPoolExecutor(max_workers=6) as executor:
-            futures = {executor.submit(a.run): a for a in agents}
-            deadline = time.time() + _AGENT_EXECUTION_DEADLINE_SECONDS
+            futures: dict[Future, object] = {executor.submit(a.run): a for a in agents}
+            collected: set[Future] = set()
 
-            for future, agent in list(futures.items()):
-                remaining = deadline - time.time()
-                if remaining <= 0:
-                    logger.warning(f"Agent {agent.name} skipped — deadline exceeded")
-                    future.cancel()
-                    continue
-                try:
-                    result = future.result(timeout=remaining)
-                    agent_signals.append(result)
-                except TimeoutError:
-                    logger.warning(f"Agent {agent.name} timed out")
-                    future.cancel()
-                except Exception as e:
-                    logger.warning(f"Agent {agent.name} failed: {e}")
+            try:
+                for future in as_completed(futures, timeout=_AGENT_EXECUTION_DEADLINE_SECONDS):
+                    agent = futures[future]
+                    collected.add(future)
+                    try:
+                        agent_signals.append(future.result())
+                        logger.debug(f"Agent {agent.name} collected")
+                    except Exception as e:
+                        logger.warning(f"Agent {agent.name} failed: {e}")
+            except TimeoutError:
+                logger.warning(
+                    "Agent batch timeout — collecting already-finished futures"
+                )
+                for future, agent in futures.items():
+                    if future in collected:
+                        continue
+                    if future.done():
+                        collected.add(future)
+                        try:
+                            agent_signals.append(future.result())
+                            logger.info(
+                                f"Agent {agent.name} recovered after timeout"
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Agent {agent.name} result error: {e}"
+                            )
+                    else:
+                        future.cancel()
+                        logger.warning(
+                            f"Agent {agent.name} truly timed out — cancelled"
+                        )
 
         synth_agent = build_synthesis_agent()
         analog_summary = (
