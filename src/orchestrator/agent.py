@@ -14,6 +14,17 @@ from src.feedback.tracker import PredictionTracker
 from src.config import settings
 from src.reasoning.analog_explainer import AnalogExplainer
 
+# Hard deadline for all concurrent agents.
+# NewsImpactAgent is the slowest (network + FinBERT + Gemini) and has a
+# 25-second per-agent budget; the overall budget is 28s to leave 3s margin.
+_AGENT_EXECUTION_DEADLINE_SECONDS: int = 28
+
+# Synthesis confidence thresholds for triggering the weighted fallback
+_SYNTHESIS_MIN_CONFIDENCE: float = 0.15
+_SYNTHESIS_ZERO_SIGNAL_MAX_CONFIDENCE: float = 0.10
+
+_ECONOMIC_CALENDAR_UNCERTAINTY_MULTIPLIER: float = 0.20
+
 LATEST_EXPLANATION = ""
 
 
@@ -56,7 +67,7 @@ def _weighted_fallback(
          if s.agent_name == "EconomicCalendarAgent"),
         None
     )
-    uncertainty_penalty = eco.confidence * 0.20 if eco else 0.0
+    uncertainty_penalty = eco.confidence * _ECONOMIC_CALENDAR_UNCERTAINTY_MULTIPLIER if eco else 0.0
 
     weighted_sum = 0.0
     total_weight = 0.0
@@ -221,7 +232,7 @@ class MarketOrchestrator:
         agent_signals = []
         with ThreadPoolExecutor(max_workers=6) as executor:
             futures = {executor.submit(a.run): a for a in agents}
-            deadline = time.time() + 28  # 28s hard budget for all agents
+            deadline = time.time() + _AGENT_EXECUTION_DEADLINE_SECONDS
 
             for future, agent in list(futures.items()):
                 remaining = deadline - time.time()
@@ -253,8 +264,8 @@ class MarketOrchestrator:
 
         # If synthesis failed (empty response / exhausted keys)
         # compute weighted signal from agent signals directly
-        if synthesis.confidence < 0.15 or (
-            synthesis.signal == 0 and synthesis.confidence <= 0.1
+        if synthesis.confidence < _SYNTHESIS_MIN_CONFIDENCE or (
+            synthesis.signal == 0 and synthesis.confidence <= _SYNTHESIS_ZERO_SIGNAL_MAX_CONFIDENCE
         ):
             synthesis = _weighted_fallback(agent_signals, regime)
             logger.warning(

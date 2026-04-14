@@ -24,6 +24,10 @@ class AgentBase(ABC):
         from src.config import settings
         if settings.GEMINI_FORCE_FLASH_LITE:
             model_name = settings.GEMINI_FLASH_LITE_MODEL
+            logger.debug(
+                f"{self.name}: Flash-Lite override active — "
+                f"using {model_name}"
+            )
         keys_to_try = [self.assigned_api_key, settings.GEMINI_API_KEY_7]
 
         for key in keys_to_try:
