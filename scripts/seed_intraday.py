@@ -7,6 +7,12 @@ Usage:
     python scripts/seed_intraday.py
     python scripts/seed_intraday.py --days 30
 """
+import sys
+import os
+
+# Ensure project root is on the path regardless of where script is invoked from
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import argparse
 from src.data.db import init_db
 from src.data.intraday_seeder import seed_intraday_history
