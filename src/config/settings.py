@@ -42,4 +42,15 @@ class Settings:
     MARKET_CLOSE: str = "15:30"
     TIMEZONE: str = "Asia/Kolkata"
 
+    # Intraday data config
+    INTRADAY_SYMBOL: str = "NSE:NIFTY 50"
+    INTRADAY_INTERVAL: str = "15minute"
+    INTRADAY_LOOKBACK_DAYS: int = 60      # seed historical window
+    INTRADAY_CANDLES_FOR_ANALOG: int = 20 # window size for analog matching
+    INTRADAY_OUTCOME_CANDLES: int = 5     # candles forward to resolve outcome
+
+    # Dual resolution mode
+    USE_INTRADAY: bool = True
+    # True = 15-min candles (L3), False = daily candles (L1 fallback)
+
 settings = Settings()

@@ -113,6 +113,44 @@ async def lifespan(app: FastAPI):
             max_instances=1,
             coalesce=True,
         )
+
+        def intraday_sync_job():
+            from src.data.intraday_seeder import sync_intraday_today
+            try:
+                n = sync_intraday_today()
+                logger.info(f"Intraday sync: {n} candles added")
+                scheduler_job_status["intraday_sync"] = "success"
+            except Exception as e:
+                logger.error(f"Intraday sync failed: {e}", exc_info=True)
+                scheduler_job_status["intraday_sync"] = "failed"
+
+        scheduler.add_job(
+            intraday_sync_job,
+            trigger=CronTrigger(hour=9, minute=10, timezone="Asia/Kolkata"),
+            id="intraday_sync",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+
+        def intraday_resolve_job():
+            from src.learning.intraday_resolver import resolve_intraday_outcomes
+            try:
+                n = resolve_intraday_outcomes()
+                logger.info(f"Intraday resolution: {n} outcomes resolved")
+                scheduler_job_status["intraday_resolver"] = "success"
+            except Exception as e:
+                logger.error(f"Intraday resolve failed: {e}", exc_info=True)
+                scheduler_job_status["intraday_resolver"] = "failed"
+
+        scheduler.add_job(
+            intraday_resolve_job,
+            trigger=IntervalTrigger(minutes=30),
+            id="intraday_resolver",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
         scheduler.add_job(
             resolve_outcomes_job,
             trigger=CronTrigger(hour=9, minute=0, timezone="Asia/Kolkata"),
@@ -223,6 +261,39 @@ def get_candles(symbol: str = "NSE:NIFTY 50", limit: int = 100):
     # Use a wide date range — DB will return sorted by timestamp
     candles = read_candles(symbol, "2000-01-01", now)
     return {"symbol": symbol, "candles": candles[-limit:]}
+
+
+@app.get("/api/intraday/candles")
+def get_intraday_candles(symbol: str = "NSE:NIFTY 50", limit: int = 50):
+    from src.data.db import read_intraday_candles
+
+    limit = min(max(limit, 1), 200)
+    candles = read_intraday_candles(symbol, limit=limit)
+    return {
+        "symbol": symbol,
+        "count": len(candles),
+        "candles": candles
+    }
+
+@app.get("/api/intraday/stats")
+def get_intraday_stats():
+    from src.data.db import read_intraday_candles, get_latest_intraday_timestamp
+
+    symbol = settings.INTRADAY_SYMBOL
+    candles = read_intraday_candles(symbol)
+
+    total = len(candles)
+    earliest = candles[0]["timestamp_ist"] if total > 0 else None
+    latest = get_latest_intraday_timestamp(symbol)
+
+    return {
+        "symbol": symbol,
+        "total_candles": total,
+        "earliest": earliest,
+        "latest": latest,
+        "last_sync": latest,
+        "resolution_mode": "intraday" if settings.USE_INTRADAY else "daily"
+    }
 
 
 @app.get("/api/accuracy")

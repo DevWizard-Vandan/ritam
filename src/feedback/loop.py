@@ -25,7 +25,8 @@ class FeedbackLoop:
             signal=result.signal,
             sentiment_score=result.sentiment_score,
             regime=result.regime,
-            analog_similarity=analog_similarity
+            analog_similarity=analog_similarity,
+            source=result.source
         )
         return timestamp
 

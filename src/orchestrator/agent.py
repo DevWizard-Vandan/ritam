@@ -25,6 +25,7 @@ class OrchestratorResult:
     agent_signals: list = None
     synthesis_reasoning: str = ""
     final_confidence: float = 0.0
+    source: str = "daily"
 
 
 class MarketOrchestrator:
@@ -50,6 +51,30 @@ class MarketOrchestrator:
             recent_daily_candles: Last 20 daily candles used for analog matching.
             vix: Current India VIX estimate.
         """
+        if settings.USE_INTRADAY:
+            from src.data.db import read_intraday_candles
+            intraday_candles = read_intraday_candles(
+                settings.INTRADAY_SYMBOL,
+                limit=settings.INTRADAY_CANDLES_FOR_ANALOG + 5
+            )
+            if len(intraday_candles) < 10:
+                logger.warning("Insufficient intraday candles — falling back to daily")
+                source = "daily"
+            else:
+                source = "intraday"
+
+                # compute price_change_pct from intraday candles
+                if len(intraday_candles) >= 2:
+                    prev_close = intraday_candles[-2]["close"]
+                    curr_close = intraday_candles[-1]["close"]
+                    price_change = ((curr_close - prev_close) / prev_close * 100) if prev_close else 0.0
+                else:
+                    price_change = 0.0
+                last_candle = intraday_candles[-1].copy()
+                last_candle["price_change_pct"] = price_change
+        else:
+            source = "daily"
+
         headlines = fetch_headlines()
         scored = score_headlines(headlines)
 
@@ -122,7 +147,8 @@ class MarketOrchestrator:
             explanation=explanation,
             agent_signals=[s.__dict__ for s in agent_signals],
             synthesis_reasoning=synthesis.reasoning,
-            final_confidence=final_confidence
+            final_confidence=final_confidence,
+            source=source
         )
 
         timestamp = self.loop.record_prediction(result)

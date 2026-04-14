@@ -7,16 +7,29 @@ class TechnicalPatternAgent(AgentBase):
 
     def collect(self) -> dict:
         """Reads last 25 candles from DB."""
-        from src.data.db import read_candles
-        from datetime import date, timedelta
-        to_date = str(date.today())
-        from_date = str(date.today() - timedelta(days=60))
-        candles = read_candles("NSE:NIFTY 50", from_date, to_date)
-        return {"candles": candles[-25:] if len(candles) >= 25 else candles}
+        from src.config import settings
+
+        if settings.USE_INTRADAY:
+            from src.data.db import read_intraday_candles
+            candles = read_intraday_candles(
+                settings.INTRADAY_SYMBOL, limit=25
+            )
+            candle_type = "15-minute"
+        else:
+            from src.data.db import read_candles
+            from datetime import date, timedelta
+            to_date = str(date.today())
+            from_date = str(date.today() - timedelta(days=60))
+            candles = read_candles("NSE:NIFTY 50", from_date, to_date)
+            candle_type = "daily"
+
+        candles = candles[-25:] if len(candles) >= 25 else candles
+        return {"candles": candles, "candle_type": candle_type}
 
     def reason(self, data: dict) -> AgentSignal:
         from src.config import settings
         candles = data.get("candles", [])
+        candle_type = data.get("candle_type", "daily")
         if len(candles) < 10:
             return AgentSignal(
                 agent_name=self.name, signal=0,
@@ -31,7 +44,7 @@ class TechnicalPatternAgent(AgentBase):
         )
         model = (settings.GEMINI_PRO_MODEL if settings.GEMINI_USE_PRO
                  else settings.GEMINI_FLASH_LITE_MODEL)
-        prompt = f"""Analyze this Nifty 50 OHLC data (last 15 daily candles):
+        prompt = f"""Analyze this Nifty 50 OHLC data (last 15 {candle_type} candles):
 
 {candle_summary}
 

@@ -54,13 +54,38 @@ def init_db():
             ON news_raw(source, headline, COALESCE(url, ''))
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS intraday_candles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                timestamp_ist TEXT NOT NULL,     -- ISO8601 "2026-04-14T09:15:00+05:30"
+                open REAL NOT NULL,
+                high REAL NOT NULL,
+                low REAL NOT NULL,
+                close REAL NOT NULL,
+                volume INTEGER NOT NULL,
+                UNIQUE(symbol, timestamp_ist)    -- no duplicates on re-seed
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_intraday_symbol_ts
+            ON intraday_candles(symbol, timestamp_ist)
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS predictions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT, predicted_direction TEXT,
                 predicted_move_pct REAL, confidence REAL,
-                timeframe_minutes INTEGER, regime TEXT
+                timeframe_minutes INTEGER, regime TEXT,
+                source TEXT DEFAULT 'daily'
             )
         """)
+
+        # In case the table already exists, try adding the column
+        try:
+            conn.execute("ALTER TABLE predictions ADD COLUMN source TEXT DEFAULT 'daily'")
+        except sqlite3.OperationalError:
+            pass # Column likely already exists
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS prediction_errors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,6 +117,75 @@ def write_candles(symbol: str, candles: list[dict]):
             VALUES (:symbol, :timestamp_ist, :open, :high, :low, :close, :volume)
         """, [{"symbol": symbol, **c} for c in candles])
         conn.commit()
+
+
+def upsert_intraday_candles(symbol: str, candles: list[dict]) -> int:
+    """
+    Insert or ignore candles. Returns count of new rows inserted.
+    Each candle dict: {timestamp_ist, open, high, low, close, volume}
+    """
+    with get_connection() as conn:
+        cursor = conn.executemany("""
+            INSERT OR IGNORE INTO intraday_candles (symbol, timestamp_ist, open, high, low, close, volume)
+            VALUES (:symbol, :timestamp_ist, :open, :high, :low, :close, :volume)
+        """, [{"symbol": symbol, **c} for c in candles])
+        conn.commit()
+        return cursor.rowcount
+
+def read_intraday_candles(
+    symbol: str,
+    from_dt: str | None = None,
+    to_dt: str | None = None,
+    limit: int | None = None
+) -> list[dict]:
+    """
+    Returns candles ordered ASC by timestamp_ist.
+    If limit provided: returns last `limit` rows ordered ASC.
+    Validates limit > 0 (raises ValueError otherwise).
+    """
+    if limit is not None:
+        if not isinstance(limit, int) or limit <= 0:
+            raise ValueError(f"limit must be a positive integer, got {limit!r}")
+
+    with get_connection() as conn:
+        query = """
+            SELECT timestamp_ist, open, high, low, close, volume
+            FROM intraday_candles WHERE symbol=?
+        """
+        params = [symbol]
+
+        if from_dt:
+            query += " AND timestamp_ist >= ?"
+            params.append(from_dt)
+        if to_dt:
+            query += " AND timestamp_ist <= ?"
+            params.append(to_dt)
+
+        if limit is not None:
+            query = f"""
+                SELECT * FROM (
+                    {query}
+                    ORDER BY timestamp_ist DESC
+                    LIMIT ?
+                ) ORDER BY timestamp_ist ASC
+            """
+            params.append(limit)
+        else:
+            query += " ORDER BY timestamp_ist ASC"
+
+        rows = conn.execute(query, tuple(params)).fetchall()
+
+    return [{"timestamp_ist": r[0], "open": r[1], "high": r[2],
+             "low": r[3], "close": r[4], "volume": r[5]} for r in rows]
+
+def get_latest_intraday_timestamp(symbol: str) -> str | None:
+    """Returns the most recent timestamp_ist for a symbol, or None."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT MAX(timestamp_ist) FROM intraday_candles WHERE symbol=?",
+            (symbol,)
+        ).fetchone()
+    return row[0] if row and row[0] else None
 
 
 def read_candles(symbol: str, from_date: str, to_date: str, limit: int = None) -> list[dict]:
