@@ -8,13 +8,15 @@ class NewsImpactAgent(AgentBase):
     def collect(self) -> dict:
         """Gets headlines from the existing news fetcher."""
         from src.data.news_fetcher import fetch_headlines
-        from src.sentiment.scorer import SentimentScorer
+        from src.sentiment.scorer import score_headlines
         headlines = fetch_headlines()
-        scorer = SentimentScorer()
-        scored = scorer.score_batch(headlines[:20])  # top 20
+        scored = score_headlines(headlines[:20])  # list of dicts with 'score' key
+        avg_sentiment = (
+            sum(r["score"] for r in scored) / len(scored) if scored else 0.0
+        )
         return {
             "headlines": headlines[:20],
-            "sentiment_score": scored,
+            "sentiment_score": avg_sentiment,
         }
 
     def reason(self, data: dict) -> AgentSignal:
