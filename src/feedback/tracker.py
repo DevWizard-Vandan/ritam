@@ -44,10 +44,16 @@ class PredictionTracker:
                     regime TEXT,
                     analog_similarity REAL,
                     actual_return_pct REAL,
-                    resolved INTEGER DEFAULT 0
+                    resolved INTEGER DEFAULT 0,
+                    source TEXT DEFAULT 'daily'
                 )
                 """
             )
+
+            try:
+                conn.execute("ALTER TABLE feedback_predictions ADD COLUMN source TEXT DEFAULT 'daily'")
+            except sqlite3.OperationalError:
+                pass
             conn.commit()
 
     def record_prediction(
@@ -57,17 +63,31 @@ class PredictionTracker:
         sentiment_score: float,
         regime: str,
         analog_similarity: float,
+        source: str = "daily",
     ) -> None:
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT INTO feedback_predictions (
-                    timestamp, signal, sentiment_score, regime, analog_similarity
-                ) VALUES (?, ?, ?, ?, ?)
+                    timestamp, signal, sentiment_score, regime, analog_similarity, source
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(timestamp) DO NOTHING
                 """,
-                (timestamp, signal, sentiment_score, regime, analog_similarity),
+                (timestamp, signal, sentiment_score, regime, analog_similarity, source),
             )
+            # Also update the main predictions table (schema consistency)
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO predictions (
+                        timestamp, predicted_direction, predicted_move_pct, confidence, timeframe_minutes, regime, source
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (timestamp, signal, 0.0, 0.5, 1440 if source == "daily" else 15, regime, source),
+                )
+            except sqlite3.OperationalError:
+                pass # If it doesn't exist yet, it will be handled by init_db
+
             conn.commit()
 
     def record_outcome(self, timestamp: str, actual_return_pct: float) -> None:

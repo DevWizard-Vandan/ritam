@@ -74,6 +74,11 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 - [x] L0: Gemini dual-key routing ✅ merged PR #31
 - [ ] L1: Scheduler + 7-key expansion + agent scaffold — open PR #32
 - [x] L2: Macro Signal Agents ✅ merged (9 agents, parallel execution)
+- [x] L3: 15-min intraday data ✅ merged PR #35
+    - intraday_candles table seeded
+    - dual resolution mode active
+    - outcomes resolve every 75 minutes
+    - RL updater learns 35x faster
 - [x] `task_007` - Feedback loop implemented
 - [x] `task_008` - RL weight updater
 - [ ] `task_010` - Gemma reasoning layer
