@@ -25,8 +25,7 @@ def resolve_intraday_outcomes() -> int:
         pending = conn.execute("""
             SELECT id, timestamp, predicted_direction
             FROM predictions
-            WHERE (id NOT IN (SELECT prediction_id FROM prediction_errors)
-               OR id IN (SELECT prediction_id FROM prediction_errors WHERE direction_correct IS NULL))
+            WHERE resolved = 0
               AND source = 'intraday'
               AND timestamp <= ?
         """, (now_ts,)).fetchall()
@@ -111,6 +110,10 @@ def resolve_intraday_outcomes() -> int:
             except Exception:
                 pass # ignore if feedback_predictions not used
 
+            conn.execute(
+                "UPDATE predictions SET resolved = 1, signal = ? WHERE id = ?",
+                (signal_str, pred_id)
+            )
             resolved_count += 1
 
         conn.commit()
