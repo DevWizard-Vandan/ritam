@@ -132,6 +132,21 @@ def init_db():
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
         """)
+
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS paper_trades (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                signal TEXT,
+                entry_price REAL,
+                entry_time TEXT,
+                exit_price REAL,
+                exit_time TEXT,
+                pnl REAL,
+                outcome TEXT,
+                sharpe_contribution REAL,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        ''')
         conn.commit()
     logger.info("Database initialized")
 
@@ -348,3 +363,50 @@ def insert_weight_history(
             VALUES (?, ?, ?, ?)
         """, (agent_name, weight, accuracy_7d, now))
         conn.commit()
+
+
+def insert_paper_trade(
+    signal: str, entry_price: float, entry_time: str,
+    exit_price: float, exit_time: str, pnl: float, outcome: str
+) -> None:
+    """Insert a completed paper trade."""
+    with get_connection() as conn:
+        conn.execute("""
+            INSERT INTO paper_trades (signal, entry_price, entry_time, exit_price, exit_time, pnl, outcome)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (signal, entry_price, entry_time, exit_price, exit_time, pnl, outcome))
+        conn.commit()
+
+
+def read_paper_trades(limit: int = 100) -> list[dict]:
+    """Read the most recent paper trades."""
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT id, signal, entry_price, entry_time, exit_price, exit_time, pnl, outcome, sharpe_contribution, created_at
+            FROM paper_trades ORDER BY exit_time DESC LIMIT ?
+        """, (limit,)).fetchall()
+    return [
+        {
+            "id": r[0], "signal": r[1], "entry_price": r[2], "entry_time": r[3],
+            "exit_price": r[4], "exit_time": r[5], "pnl": r[6], "outcome": r[7],
+            "sharpe_contribution": r[8], "created_at": r[9]
+        }
+        for r in rows
+    ]
+
+
+def get_paper_trade_stats() -> dict:
+    """Get paper trading statistics."""
+    with get_connection() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM paper_trades").fetchone()[0]
+        wins = conn.execute("SELECT COUNT(*) FROM paper_trades WHERE outcome='WIN'").fetchone()[0]
+        pnl_row = conn.execute("SELECT SUM(pnl) FROM paper_trades").fetchone()[0]
+
+    total_pnl = float(pnl_row) if pnl_row is not None else 0.0
+    win_rate = float(wins) / total if total > 0 else 0.0
+
+    return {
+        "win_rate": round(win_rate, 4),
+        "total_pnl": round(total_pnl, 2),
+        "trade_count": total
+    }

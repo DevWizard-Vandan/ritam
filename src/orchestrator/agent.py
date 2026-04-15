@@ -121,6 +121,8 @@ class OrchestratorResult:
     agent_signals_json: str = ""
 
 
+from src.paper_trading.engine import PaperTradingEngine
+
 class MarketOrchestrator:
     """Coordinate pipeline steps and output one actionable signal per cycle."""
 
@@ -134,6 +136,7 @@ class MarketOrchestrator:
         self.tracker = tracker or PredictionTracker(settings.DB_PATH)
         self.loop = loop or FeedbackLoop(self.tracker)
         self.explainer = AnalogExplainer()
+        self.paper_engine = PaperTradingEngine()
 
     def run_cycle(
         self,
@@ -290,6 +293,35 @@ class MarketOrchestrator:
             signal = "hold"
 
         final_confidence = synthesis.confidence
+
+        # --- Paper Trading Integration ---
+        current_price = float(last_candle.get("close", 0.0))
+        # Get ISO timestamp
+        import datetime
+        timestamp_str = datetime.datetime.now().isoformat()
+        if "timestamp_ist" in last_candle:
+            timestamp_str = last_candle["timestamp_ist"]
+
+        if signal in ["buy", "sell"]:
+            if self.paper_engine.open_pos is None:
+                # Case 1 - No open position
+                logger.info(f"PaperTrading: No open position, opening {signal.upper()}")
+                self.paper_engine.open_position(signal, current_price, timestamp_str)
+            else:
+                current_signal = self.paper_engine.open_pos["signal"].lower()
+                if current_signal != signal:
+                    # Case 2 - Signal Flip
+                    logger.info(f"PaperTrading: Signal flip from {current_signal.upper()} to {signal.upper()}, closing current and opening new")
+                    self.paper_engine.close_position(current_price, timestamp_str)
+                    self.paper_engine.open_position(signal, current_price, timestamp_str)
+                else:
+                    # Same signal, keep open
+                    logger.info(f"PaperTrading: Signal is {signal.upper()}, keeping existing position open")
+        else:
+            # Case 3 - HOLD
+            logger.info("PaperTrading: Signal is HOLD, keeping existing position open (if any)")
+        # ---------------------------------
+
 
         from src.data.db import log_agent_signals
         import uuid

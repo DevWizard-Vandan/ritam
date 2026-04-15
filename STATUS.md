@@ -97,7 +97,7 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 
 ### Pending Layers (Corrected Definitions — Apr 15, 2026)
 
-- [ ] **L5: Paper Trading Engine**
+- [x] **L5: Paper Trading Engine**
     - Wire BUY/SELL/HOLD signal → Zerodha paper trading (no real money)
     - Track P&L, Sharpe ratio, win-rate separately from prediction accuracy
     - Builds a verifiable live track record
