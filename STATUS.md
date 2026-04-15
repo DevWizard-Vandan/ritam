@@ -1,6 +1,6 @@
 # RITAM - Project Status
-# Last Updated: April 13, 2026 - React dashboard (frontend/) built with Vite + Tailwind CSS
-# Updating Agent: Antigravity (feature/dashboard-v1)
+# Last Updated: April 15, 2026 - L4 RL Weight Updater live, L5–L9 roadmap defined
+# Updating Agent: Vandan
 
 ---
 
@@ -76,6 +76,8 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 ---
 
 ## Up Next
+
+### Completed Layers
 - [x] L0: Gemini dual-key routing ✅ merged PR #31
 - [ ] L1: Scheduler + 7-key expansion + agent scaffold — open PR #32
 - [x] L2: Macro Signal Agents ✅ merged (9 agents, parallel execution)
@@ -84,11 +86,55 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
     - dual resolution mode active
     - outcomes resolve every 75 minutes
     - RL updater learns 35x faster
-- [x] L4: RL Weight Updater ✅ merged
+- [x] L4: RL Weight Updater ✅ merged PR #41
     - Per-agent accuracy tracked (7d + 30d windows)
     - Weights update every Sunday at 00:00 IST
     - Live weights loaded into _weighted_fallback on every cycle
     - /api/agents/stats endpoint live
+    - intraday_resolver marks resolved=1 correctly
+
+### Pending Layers
+- [ ] L5: Live Dashboard
+    - Wire React frontend (`frontend/`) to live backend endpoints
+    - Connect WebSocket to real-time signal panel
+    - Display agent weights from `/api/agents/stats`
+    - Show regime, sentiment score, and last explanation live
+    - Deploy locally at `localhost:5173` with `npm run dev`
+    - Stretch: deploy to Vercel for public access
+
+- [ ] L6: Alert System
+    - Push Telegram message when signal flips hold → buy or hold → sell
+    - Include: signal, confidence, regime, top 2 agents by weight
+    - Cooldown: max 1 alert per 30 minutes
+    - Config via `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` in `.env`
+    - Stretch: WhatsApp via Twilio
+
+- [ ] L7: Backtesting + Accuracy Validation
+    - Run 3-month historical backtest using stored predictions + outcomes
+    - Compare RL-weighted agent accuracy vs baseline (equal weights)
+    - Plot: equity curve, drawdown, win rate, Sharpe ratio
+    - Output report to `reports/backtest_YYYY-MM-DD.html`
+    - Stretch: walk-forward validation (re-weight every week, test next week)
+
+- [ ] L8: Local Gemma Reasoning (Zero API Cost)
+    - Replace Gemini Flash-Lite (`quick_reason`) with local `gemma4:2b` via Ollama
+    - Replace Gemini Flash (`deep_reason`) with local `gemma4:26b` via Ollama (GPU)
+    - Fallback chain: Ollama → Gemini key_1 → Gemini key_2
+    - Benchmark: latency + accuracy vs current Gemini-only setup
+    - Goal: Rs0/month API cost for reasoning layer
+
+- [ ] L9: Production Hardening + Deployment
+    - Migrate SQLite → PostgreSQL for multi-session safety
+    - Dockerize: `docker-compose up` starts API + frontend + scheduler
+    - Deploy API to Fly.io or Railway (always-on, free tier)
+    - Deploy frontend to Vercel
+    - Add `/health` endpoint with DB ping + last cycle timestamp
+    - Add Sentry or Logfire for error tracking
+    - Stretch: auto-restart on crash with supervisor/systemd
+
+---
+
+## Task Tracker
 - [x] `task_007` - Feedback loop implemented
 - [x] `task_008` - RL weight updater
 - [ ] `task_010` - Gemma reasoning layer
