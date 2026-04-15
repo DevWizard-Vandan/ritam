@@ -49,7 +49,6 @@ class PredictionTracker:
                 )
                 """
             )
-
             try:
                 conn.execute("ALTER TABLE feedback_predictions ADD COLUMN source TEXT DEFAULT 'daily'")
             except sqlite3.OperationalError:
@@ -64,6 +63,7 @@ class PredictionTracker:
         regime: str,
         analog_similarity: float,
         source: str = "daily",
+        agent_signals_json: str | None = None,
     ) -> None:
         with self._connect() as conn:
             conn.execute(
@@ -75,18 +75,31 @@ class PredictionTracker:
                 """,
                 (timestamp, signal, sentiment_score, regime, analog_similarity, source),
             )
-            # Also update the main predictions table (schema consistency)
+            # Write to main predictions table with all L4 columns in one shot
             try:
                 conn.execute(
                     """
                     INSERT INTO predictions (
-                        timestamp, predicted_direction, predicted_move_pct, confidence, timeframe_minutes, regime, source
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        timestamp, predicted_direction, predicted_move_pct,
+                        confidence, timeframe_minutes, regime, source,
+                        signal, predicted_at, agent_signals, resolved
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
                     """,
-                    (timestamp, signal, 0.0, 0.5, 1440 if source == "daily" else 15, regime, source),
+                    (
+                        timestamp,
+                        signal,
+                        0.0,
+                        0.5,
+                        1440 if source == "daily" else 15,
+                        regime,
+                        source,
+                        signal,           # signal column
+                        timestamp,        # predicted_at column
+                        agent_signals_json,  # agent_signals column
+                    ),
                 )
             except sqlite3.OperationalError:
-                pass # If it doesn't exist yet, it will be handled by init_db
+                pass
 
             conn.commit()
 
@@ -102,6 +115,20 @@ class PredictionTracker:
             )
             if cursor.rowcount == 0:
                 raise ValueError(f"No prediction found for timestamp: {timestamp}")
+            # Also mark resolved in main predictions table
+            try:
+                conn.execute(
+                    """
+                    UPDATE predictions
+                    SET resolved = 1,
+                        actual_return = ?,
+                        resolved_at = datetime('now')
+                    WHERE timestamp = ?
+                    """,
+                    (actual_return_pct, timestamp),
+                )
+            except sqlite3.OperationalError:
+                pass
             conn.commit()
 
     @staticmethod
@@ -144,14 +171,14 @@ class PredictionTracker:
                 "accuracy_pct": 0.0,
                 "avg_error": 0.0,
                 "by_signal": {
-                    "buy": {"total": 0, "correct": 0, "accuracy_pct": 0.0},
+                    "buy":  {"total": 0, "correct": 0, "accuracy_pct": 0.0},
                     "sell": {"total": 0, "correct": 0, "accuracy_pct": 0.0},
                     "hold": {"total": 0, "correct": 0, "accuracy_pct": 0.0},
                 },
             }
 
         by_signal: dict[str, dict[str, float]] = {
-            "buy": {"total": 0, "correct": 0, "accuracy_pct": 0.0},
+            "buy":  {"total": 0, "correct": 0, "accuracy_pct": 0.0},
             "sell": {"total": 0, "correct": 0, "accuracy_pct": 0.0},
             "hold": {"total": 0, "correct": 0, "accuracy_pct": 0.0},
         }
@@ -169,7 +196,9 @@ class PredictionTracker:
 
         for signal_stats in by_signal.values():
             sig_total = signal_stats["total"]
-            signal_stats["accuracy_pct"] = round(signal_stats["correct"] / sig_total, 4) if sig_total else 0.0
+            signal_stats["accuracy_pct"] = (
+                round(signal_stats["correct"] / sig_total, 4) if sig_total else 0.0
+            )
 
         return {
             "total": total,
