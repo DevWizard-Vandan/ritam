@@ -71,6 +71,9 @@ class GlobalMarketAgent(AgentBase):
             if any(v != 0.0 for v in results.values()):
                 _cache = results
                 _cache_ts = now
+            elif _cache:
+                logger.warning("GlobalMarketAgent: falling back to cache since all results are 0.0")
+                return _cache
 
             return results
 

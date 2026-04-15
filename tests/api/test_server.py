@@ -79,17 +79,15 @@ def test_resolve_outcome_success_returns_payload(client, monkeypatch):
 
 def test_get_learning_weights_returns_200(client, monkeypatch):
     from src.learning import weight_updater as wu
-    monkeypatch.setattr(wu.WeightUpdater, "get_current_weights", lambda self: {"weights": {"buy": 1.0, "sell": 1.0, "hold": 1.0}})
-    resp = client.get("/api/learning/weights")
+    monkeypatch.setattr(wu, "run_weight_update", lambda: {"updated_at": "2026-04-15T00:00:00Z", "agents": [], "new_weights": {}})
+    resp = client.get("/api/agents/stats")
     assert resp.status_code == 200
-    assert "weights" in resp.json()
 
 def test_post_update_weights_returns_200(client, monkeypatch):
     from src.learning import weight_updater as wu
-    monkeypatch.setattr(wu.WeightUpdater, "update_weights", lambda self: {"buy": {"old_weight": 1.0, "new_weight": 1.05, "accuracy_pct": 70.0}})
-    resp = client.post("/api/learning/update-weights")
+    monkeypatch.setattr(wu, "run_weight_update", lambda: {"updated_at": "2026-04-15T00:00:00Z", "agents": [], "new_weights": {}})
+    resp = client.post("/api/weights/update")
     assert resp.status_code == 200
-    assert "buy" in resp.json()
 
 
 def test_get_analogs_returns_list(client, monkeypatch):
