@@ -64,6 +64,7 @@ class PredictionTracker:
         regime: str,
         analog_similarity: float,
         source: str = "daily",
+        agent_signals_json: str | None = None,
     ) -> None:
         with self._connect() as conn:
             conn.execute(
@@ -80,13 +81,24 @@ class PredictionTracker:
                 conn.execute(
                     """
                     INSERT INTO predictions (
-                        timestamp, predicted_direction, predicted_move_pct, confidence, timeframe_minutes, regime, source
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        timestamp, predicted_direction, predicted_move_pct, confidence, timeframe_minutes, regime, source, agent_signals
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (timestamp, signal, 0.0, 0.5, 1440 if source == "daily" else 15, regime, source),
+                    (timestamp, signal, 0.0, 0.5, 1440 if source == "daily" else 15, regime, source, agent_signals_json),
                 )
             except sqlite3.OperationalError:
-                pass # If it doesn't exist yet, it will be handled by init_db
+                try:
+                    conn.execute("ALTER TABLE predictions ADD COLUMN agent_signals TEXT DEFAULT NULL")
+                    conn.execute(
+                        """
+                        INSERT INTO predictions (
+                            timestamp, predicted_direction, predicted_move_pct, confidence, timeframe_minutes, regime, source, agent_signals
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (timestamp, signal, 0.0, 0.5, 1440 if source == "daily" else 15, regime, source, agent_signals_json),
+                    )
+                except sqlite3.OperationalError:
+                    pass
 
             conn.commit()
 

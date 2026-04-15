@@ -1,67 +1,155 @@
-"""Updates weights based on RL feedback."""
-from __future__ import annotations
+"""
+RL Weight Updater — runs every Sunday at 00:00 IST.
+Reads last 7 days of resolved predictions, computes per-agent
+accuracy, updates weights in DB and in _weighted_fallback WEIGHTS.
+"""
+from loguru import logger
+from src.data.db import (
+    upsert_agent_weight, insert_weight_history, get_agent_weights
+)
+from src.learning.accuracy_calculator import (
+    compute_agent_accuracy, compute_all_accuracies
+)
 
-import json
-from pathlib import Path
-from datetime import datetime, timedelta, timezone
+# ── Hardcoded baseline weights (from _weighted_fallback) ──────────
+BASELINE_WEIGHTS = {
+    "FIIDerivativeAgent":    0.25,
+    "MarketBreadthAgent":    0.20,
+    "TechnicalPatternAgent": 0.20,
+    "RegimeCrossCheckAgent": 0.15,
+    "NewsImpactAgent":       0.10,
+    "OptionsChainAgent":     0.05,
+    "SectorRotationAgent":   0.03,
+    "GlobalMarketAgent":     0.02,
+    "EconomicCalendarAgent": 0.00,
+}
 
-from src.feedback.tracker import PredictionTracker
+# ── RL hyperparameters ────────────────────────────────────────────
+LEARNING_RATE = 0.15       # how fast weights shift toward accuracy
+MIN_WEIGHT    = 0.01       # floor — no agent fully silenced
+MAX_WEIGHT    = 0.45       # ceiling — no agent dominates alone
+MIN_SAMPLES   = 5          # minimum predictions before weight moves
 
 
-class WeightUpdater:
-    def __init__(self, tracker: PredictionTracker, weights_path: str = "config/signal_weights.json"):
-        self.tracker = tracker
-        self.weights_path = Path(weights_path)
+def _normalize(weights: dict[str, float]) -> dict[str, float]:
+    """Re-normalize weights to sum to 1.0 (excluding EconCal)."""
+    active = {k: v for k, v in weights.items() if k != "EconomicCalendarAgent"}
+    total = sum(active.values())
+    if total == 0:
+        return weights
+    normalized = {k: round(v / total, 4) for k, v in active.items()}
+    if "EconomicCalendarAgent" in weights:
+        normalized["EconomicCalendarAgent"] = 0.00
+    return normalized
 
-    def get_current_weights(self) -> dict:
-        if not self.weights_path.exists():
-            return {"updated_at": None, "weights": {}, "week_accuracy": None}
-        with open(self.weights_path, "r", encoding="utf-8") as f:
-            return json.load(f)
 
-    def update_weights(self) -> dict:
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        stats = self.tracker.get_accuracy_stats(since=cutoff)
-        by_signal = stats.get("by_signal", {})
+def run_weight_update() -> dict:
+    """
+    Main entry point. Called by scheduler every Sunday.
 
-        current_data = self.get_current_weights()
-        weights = current_data.get("weights", {})
+    Algorithm:
+      For each agent:
+        1. Compute accuracy_7d and accuracy_30d
+        2. If total_7d < MIN_SAMPLES: keep current weight (not enough data)
+        3. New weight = current_weight + LEARNING_RATE * (accuracy_7d - 0.5)
+           Logic: accuracy > 0.5 → weight increases
+                  accuracy < 0.5 → weight decreases
+                  accuracy = 0.5 → weight unchanged (random = no info)
+        4. Clamp to [MIN_WEIGHT, MAX_WEIGHT]
+        5. Normalize all weights to sum to 1.0
 
-        updated_info = {}
+    Returns summary dict with before/after weights and accuracy stats.
+    """
+    from datetime import datetime, timedelta, timezone
 
-        for signal in ["buy", "sell", "hold"]:
-            signal_stats = by_signal.get(signal, {})
-            total = signal_stats.get("total", 0)
-            accuracy = signal_stats.get("accuracy_pct", 0.0)
-
-            if total < 10:
-                continue
-
-            old_weight = weights.get(signal, 1.0)
-
-            if accuracy > 0.65:
-                new_weight = min(old_weight * 1.05, 2.0)
-            elif accuracy < 0.45:
-                new_weight = max(old_weight * 0.95, 0.1)
-            else:
-                new_weight = old_weight
-
-            new_weight = round(new_weight, 4)
-            weights[signal] = new_weight
-
-            updated_info[signal] = {
-                "old_weight": old_weight,
-                "new_weight": new_weight,
-                "accuracy_pct": accuracy
-            }
-
+    try:
+        import pytz
+        ist = pytz.timezone("Asia/Kolkata")
+        now = datetime.now(ist).isoformat()
+    except ImportError:
         ist = timezone(timedelta(hours=5, minutes=30))
-        current_data["updated_at"] = datetime.now(ist).replace(microsecond=0).isoformat()
-        current_data["weights"] = weights
-        current_data["week_accuracy"] = stats.get("accuracy_pct")
+        now = datetime.now(ist).isoformat()
 
-        self.weights_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.weights_path, "w", encoding="utf-8") as f:
-            json.dump(current_data, f, indent=2)
+    logger.info("Running weekly RL weight update...")
 
-        return updated_info
+    # Load current weights from DB (or baseline if first run)
+    db_weights = get_agent_weights()
+    current_weights = {
+        k: db_weights.get(k, v)
+        for k, v in BASELINE_WEIGHTS.items()
+    }
+
+    stats_7d  = {s["agent_name"]: s for s in compute_all_accuracies(7)}
+    stats_30d = {s["agent_name"]: s for s in compute_all_accuracies(30)}
+
+    new_weights = {}
+    report_rows = []
+
+    for agent_name, current_w in current_weights.items():
+        if agent_name == "EconomicCalendarAgent":
+            new_weights[agent_name] = 0.00
+            continue
+
+        s7  = stats_7d.get(agent_name,  {"accuracy": 0.5, "total": 0, "correct": 0})
+        s30 = stats_30d.get(agent_name, {"accuracy": 0.5, "total": 0})
+
+        if s7["total"] < MIN_SAMPLES:
+            # Not enough data — hold current weight
+            new_w = current_w
+            reason = f"insufficient data ({s7['total']} samples)"
+        else:
+            # RL update: shift toward accuracy signal
+            delta = LEARNING_RATE * (s7["accuracy"] - 0.50)
+            new_w = current_w + delta
+            new_w = max(MIN_WEIGHT, min(MAX_WEIGHT, new_w))
+            reason = (f"acc_7d={s7['accuracy']:.3f} "
+                      f"delta={delta:+.4f}")
+
+        new_weights[agent_name] = round(new_w, 4)
+        report_rows.append({
+            "agent_name":  agent_name,
+            "weight_before": current_w,
+            "weight_after":  round(new_w, 4),
+            "accuracy_7d":   s7["accuracy"],
+            "accuracy_30d":  s30["accuracy"],
+            "total_7d":      s7["total"],
+            "correct_7d":    s7["correct"],
+            "reason":        reason,
+        })
+
+    # Normalize
+    new_weights = _normalize(new_weights)
+
+    # Persist to DB
+    for row in report_rows:
+        agent = row["agent_name"]
+        w = new_weights.get(agent, row["weight_after"])
+        row["weight_after"] = w
+        upsert_agent_weight(
+            agent_name=agent,
+            weight=w,
+            accuracy_7d=row["accuracy_7d"],
+            accuracy_30d=row["accuracy_30d"],
+            total=row["total_7d"],
+            correct=row["correct_7d"],
+        )
+        insert_weight_history(agent, w, row["accuracy_7d"])
+
+    # Log the report
+    logger.info("═══ RL Weight Update Report ═══")
+    for row in sorted(report_rows, key=lambda r: -r["weight_after"]):
+        arrow = "↑" if row["weight_after"] > row["weight_before"] else (
+                "↓" if row["weight_after"] < row["weight_before"] else "→")
+        logger.info(
+            f"  {row['agent_name']:28s} "
+            f"{row['weight_before']:.4f} {arrow} {row['weight_after']:.4f} "
+            f"| acc_7d={row['accuracy_7d']:.3f} "
+            f"| n={row['total_7d']}"
+        )
+    logger.info("═══════════════════════════════")
+
+    return {
+        "updated_at": now,
+        "agents": report_rows,
+        "new_weights": new_weights,
+    }

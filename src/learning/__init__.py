@@ -1,3 +1,3 @@
-from .weight_updater import WeightUpdater
+from .weight_updater import run_weight_update
 
-__all__ = ["WeightUpdater"]
+__all__ = ["run_weight_update"]

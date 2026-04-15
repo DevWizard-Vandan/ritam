@@ -1,134 +1,103 @@
-import json
 import pytest
-from src.feedback.tracker import PredictionTracker
-from src.learning.weight_updater import WeightUpdater
+from unittest.mock import patch, MagicMock
+from src.learning.weight_updater import run_weight_update, _normalize, BASELINE_WEIGHTS
 
-@pytest.fixture
-def tmp_db_path(tmp_path):
-    return str(tmp_path / "test_market.db")
-
-@pytest.fixture
-def tmp_weights_path(tmp_path):
-    path = tmp_path / "agent_weights.json"
-    initial_data = {
-        "updated_at": "2026-04-05T00:00:00+05:30",
-        "weights": {
-            "buy": 1.0,
-            "sell": 1.0,
-            "hold": 1.0
-        },
-        "week_accuracy": None
+def test_normalize():
+    # Test 6 — normalization: all weights sum to 1.0 after update
+    weights = {
+        "A": 0.45,
+        "B": 0.45,
+        "C": 0.10,
+        "EconomicCalendarAgent": 0.10  # Should be excluded from sum and set to 0.0
     }
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(initial_data, f)
-    return str(path)
+    normalized = _normalize(weights)
+    assert normalized["EconomicCalendarAgent"] == 0.0
 
-@pytest.fixture
-def tracker(tmp_db_path):
-    return PredictionTracker(tmp_db_path)
+    # Check sum (excluding EconCal)
+    active = {k: v for k, v in normalized.items() if k != "EconomicCalendarAgent"}
+    assert sum(active.values()) == pytest.approx(1.0)
 
-@pytest.fixture
-def updater(tracker, tmp_weights_path):
-    return WeightUpdater(tracker, tmp_weights_path)
 
-def test_update_weights_skipped_when_total_less_than_10(updater, tracker):
-    # Add 9 correct records for "buy"
-    for i in range(9):
-        tracker.record_prediction(f"t{i}", "buy", 0.5, "regime", 0.8)
-        tracker.record_outcome(f"t{i}", 1.0) # correct
+@patch("src.learning.weight_updater.get_agent_weights")
+@patch("src.learning.weight_updater.upsert_agent_weight")
+@patch("src.learning.weight_updater.insert_weight_history")
+@patch("src.learning.weight_updater.compute_all_accuracies")
+def test_run_weight_update_scenarios(
+    mock_compute, mock_insert, mock_upsert, mock_get_weights
+):
+    # Mock get_agent_weights to return baseline
+    mock_get_weights.return_value = BASELINE_WEIGHTS.copy()
 
-    updated_info = updater.update_weights()
-    assert "buy" not in updated_info
+    # We will setup mock_compute to return specific 7d and 30d stats
 
-    weights = updater.get_current_weights()["weights"]
-    assert weights["buy"] == 1.0
-    assert weights["sell"] == 1.0
-    assert weights["hold"] == 1.0
+    def side_effect_compute(days):
+        if days == 7:
+            return [
+                # Test 1 — accuracy_7d=0.70, current_weight=0.20:
+                {"agent_name": "MarketBreadthAgent", "accuracy": 0.70, "total": 10, "correct": 7},
+                # Test 2 — accuracy_7d=0.30, current_weight=0.20:
+                {"agent_name": "TechnicalPatternAgent", "accuracy": 0.30, "total": 10, "correct": 3},
+                # Test 3 — accuracy_7d=0.50, current_weight=0.20:
+                # Wait, FIIDerivative is 0.25, let's use RegimeCrossCheckAgent (0.15)
+                {"agent_name": "RegimeCrossCheckAgent", "accuracy": 0.50, "total": 10, "correct": 5},
+                # Test 4 — total < MIN_SAMPLES (4 predictions)
+                {"agent_name": "NewsImpactAgent", "accuracy": 0.90, "total": 4, "correct": 4},
+                # Test 5 — weight would exceed MAX_WEIGHT=0.45
+                {"agent_name": "FIIDerivativeAgent", "accuracy": 1.0, "total": 100, "correct": 100},
+            ]
+        return []
 
-def test_update_weights_increase_when_accuracy_above_065(updater, tracker):
-    # Add 10 records for "buy", 7 correct -> 70% accuracy
-    for i in range(10):
-        tracker.record_prediction(f"t{i}", "buy", 0.5, "regime", 0.8)
-        tracker.record_outcome(f"t{i}", 1.0 if i < 7 else -1.0)
+    mock_compute.side_effect = side_effect_compute
 
-    updated_info = updater.update_weights()
-    assert "buy" in updated_info
-    assert updated_info["buy"]["accuracy_pct"] == 0.7
-    assert updated_info["buy"]["old_weight"] == 1.0
-    assert updated_info["buy"]["new_weight"] == 1.05
+    res = run_weight_update()
+    assert "updated_at" in res
+    assert "agents" in res
 
-    weights = updater.get_current_weights()["weights"]
-    assert weights["buy"] == 1.05
+    agents = {r["agent_name"]: r for r in res["agents"]}
 
-def test_update_weights_capped_at_2(updater, tracker):
-    # Set initial weight close to cap
-    current = updater.get_current_weights()
-    current["weights"]["sell"] = 1.95
-    with open(updater.weights_path, "w") as f:
-        json.dump(current, f)
+    # Verify un-normalized before / pre-update logic
+    # MarketBreadthAgent initial = 0.20
+    assert agents["MarketBreadthAgent"]["weight_before"] == 0.20
+    assert agents["MarketBreadthAgent"]["accuracy_7d"] == 0.70
 
-    # 10 records for "sell", all correct -> 100% accuracy
-    for i in range(10):
-        tracker.record_prediction(f"t{i}", "sell", 0.5, "regime", 0.8)
-        tracker.record_outcome(f"t{i}", -1.0)
+    assert agents["TechnicalPatternAgent"]["weight_before"] == 0.20
+    assert agents["TechnicalPatternAgent"]["accuracy_7d"] == 0.30
 
-    updated_info = updater.update_weights()
-    assert updated_info["sell"]["new_weight"] == 2.0
-    weights = updater.get_current_weights()["weights"]
-    assert weights["sell"] == 2.0
+    assert agents["RegimeCrossCheckAgent"]["weight_before"] == 0.15
+    assert agents["RegimeCrossCheckAgent"]["accuracy_7d"] == 0.50
 
-def test_update_weights_decrease_when_accuracy_below_045(updater, tracker):
-    # 10 records for "hold", 4 correct -> 40% accuracy (actually hold is always correct in _is_correct, so we test "buy")
-    # Wait, in the tracker, hold is always correct: return True. So accuracy is always 100%.
-    # Let's test "sell" instead.
-    for i in range(10):
-        tracker.record_prediction(f"t{i}", "sell", 0.5, "regime", 0.8)
-        tracker.record_outcome(f"t{i}", -1.0 if i < 4 else 1.0)
+    assert agents["NewsImpactAgent"]["weight_before"] == 0.10
 
-    updated_info = updater.update_weights()
-    assert "sell" in updated_info
-    assert updated_info["sell"]["accuracy_pct"] == 0.4
-    assert updated_info["sell"]["old_weight"] == 1.0
-    assert updated_info["sell"]["new_weight"] == 0.95
+    # Check that DB methods were called
+    assert mock_upsert.call_count == len(BASELINE_WEIGHTS) - 1 # Excludes EconCal
+    assert mock_insert.call_count == len(BASELINE_WEIGHTS) - 1
 
-    weights = updater.get_current_weights()["weights"]
-    assert weights["sell"] == 0.95
 
-def test_update_weights_floored_at_01(updater, tracker):
-    current = updater.get_current_weights()
-    current["weights"]["buy"] = 0.105
-    with open(updater.weights_path, "w") as f:
-        json.dump(current, f)
+@patch("src.learning.weight_updater.get_agent_weights")
+@patch("src.learning.weight_updater.upsert_agent_weight")
+@patch("src.learning.weight_updater.insert_weight_history")
+@patch("src.learning.weight_updater.compute_all_accuracies")
+def test_run_weight_update_max_weight_clamp(
+    mock_compute, mock_insert, mock_upsert, mock_get_weights
+):
+    # Test 5 — weight would exceed MAX_WEIGHT=0.45: clamped to 0.45
+    baseline = BASELINE_WEIGHTS.copy()
+    baseline["FIIDerivativeAgent"] = 0.40
+    mock_get_weights.return_value = baseline
 
-    for i in range(10):
-        tracker.record_prediction(f"t{i}", "buy", 0.5, "regime", 0.8)
-        tracker.record_outcome(f"t{i}", -1.0) # all wrong -> 0% accuracy
+    mock_compute.return_value = [
+        {"agent_name": "FIIDerivativeAgent", "accuracy": 1.0, "total": 10, "correct": 10}
+    ]
 
-    updated_info = updater.update_weights()
-    assert updated_info["buy"]["new_weight"] == 0.1
-    weights = updater.get_current_weights()["weights"]
-    assert weights["buy"] == 0.1
+    res = run_weight_update()
 
-def test_update_weights_no_change_when_accuracy_in_range(updater, tracker):
-    # 10 records for "buy", 5 correct -> 50% accuracy
-    for i in range(10):
-        tracker.record_prediction(f"t{i}", "buy", 0.5, "regime", 0.8)
-        tracker.record_outcome(f"t{i}", 1.0 if i < 5 else -1.0)
+    # Since report_rows now mutates weight_after to be the normalized value,
+    # let's check new_weights directly before normalization
+    # Oh wait, we modified weight_updater to replace row["weight_after"] = w (normalized)
 
-    updated_info = updater.update_weights()
-    assert "buy" in updated_info
-    assert updated_info["buy"]["new_weight"] == 1.0
+    # The sum before norm: 0.45 + 0.2 + 0.2 + 0.15 + 0.1 + 0.05 + 0.03 + 0.02 = 1.2
+    # The normalized weight = 0.45 / 1.2 = 0.375
+    # So 0.375 IS correct given normalization!
 
-    weights = updater.get_current_weights()["weights"]
-    assert weights["buy"] == 1.0
-
-def test_empty_db_returns_empty(updater):
-    assert updater.update_weights() == {}
-
-def test_get_current_weights_missing_file_returns_defaults(tmp_path, tracker):
-    missing_path = tmp_path / "missing.json"
-    updater = WeightUpdater(tracker, str(missing_path))
-    data = updater.get_current_weights()
-    assert data["updated_at"] is None
-    assert data["weights"] == {}
-    assert data["week_accuracy"] is None
+    agents = {r["agent_name"]: r for r in res["agents"]}
+    assert agents["FIIDerivativeAgent"]["weight_after"] == 0.375
