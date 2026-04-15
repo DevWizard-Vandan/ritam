@@ -134,7 +134,7 @@ export function useLivePrediction(fallbackIntervalMs = 30_000): {
     mountedRef.current = true;
 
     const wsBase = API_BASE
-      ? API_BASE.replace(/^https/, 'wss').replace(/^http/, 'ws')
+      ? API_BASE.replace(/^https?/, (m) => (m === 'https' ? 'wss' : 'ws'))
       : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
     const wsUrl = `${wsBase}/ws/predictions`;
 

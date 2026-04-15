@@ -3,11 +3,12 @@ import { useAgentsStats } from '../hooks';
 import type { AgentStat } from '../types';
 
 const BASELINE_WEIGHT = 1.0;
+const MAX_WEIGHT_SCALE = 2.0;
 
 /* ── Weight bar sub-component ── */
 function WeightBar({ weight }: { weight: number }) {
   const isAbove = weight >= BASELINE_WEIGHT;
-  const pct = Math.min((weight / 2) * 100, 100); // scale: 2.0 = 100%
+  const pct = Math.min((weight / MAX_WEIGHT_SCALE) * 100, 100);
   return (
     <div className="flex items-center gap-2 w-full">
       <div className="flex-1 h-2 rounded-full bg-slate-deep/80 overflow-hidden">
