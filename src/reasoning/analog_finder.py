@@ -190,7 +190,7 @@ def find_intraday_analogs(
     """
     if symbol is None:
         symbol = settings.INTRADAY_SYMBOL
-    if top_n <= 0 or len(current_window) < 2:
+    if top_n <= 0 or len(current_window) < max(2, window_size):
         return []
 
     current_closes = _extract_close_series(current_window)

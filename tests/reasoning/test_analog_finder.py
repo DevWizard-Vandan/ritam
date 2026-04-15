@@ -127,7 +127,7 @@ def test_find_intraday_analogs_returns_top_n(mock_read_intraday):
     mock_read_intraday.return_value = historical
 
     current_window = _intraday_candles_from_closes([100.0, 100.5, 101.0])
-    results = find_intraday_analogs(current_window, top_n=2)
+    results = find_intraday_analogs(current_window, top_n=2, window_size=3)
 
     assert len(results) == 2
 
@@ -146,6 +146,19 @@ def test_find_intraday_analogs_insufficient_data(mock_read_intraday):
 
 
 @patch("src.reasoning.analog_finder.read_intraday_candles")
+def test_find_intraday_analogs_current_window_smaller_than_window_size(mock_read_intraday):
+    """current_window shorter than window_size → returns [] immediately (no DB call needed)."""
+    mock_read_intraday.return_value = []
+
+    # 3-candle window but window_size=20 → guard fires before any DB query
+    current_window = _intraday_candles_from_closes([100.0, 101.0, 102.0])
+    results = find_intraday_analogs(current_window, top_n=3, window_size=20)
+
+    assert results == []
+    mock_read_intraday.assert_not_called()
+
+
+@patch("src.reasoning.analog_finder.read_intraday_candles")
 def test_find_intraday_analogs_result_shape(mock_read_intraday):
     """Verify returned dicts contain exactly the expected keys."""
     historical = _intraday_candles_from_closes(
@@ -154,7 +167,7 @@ def test_find_intraday_analogs_result_shape(mock_read_intraday):
     mock_read_intraday.return_value = historical
 
     current_window = _intraday_candles_from_closes([100.0, 100.3, 100.6])
-    results = find_intraday_analogs(current_window, top_n=1)
+    results = find_intraday_analogs(current_window, top_n=1, window_size=3)
 
     assert len(results) == 1
     assert set(results[0].keys()) == {
@@ -180,7 +193,7 @@ def test_find_intraday_analogs_outcome_is_5_candles(mock_read_intraday):
     mock_read_intraday.return_value = historical
 
     current_window = _intraday_candles_from_closes([100.0, 101.0])
-    results = find_intraday_analogs(current_window, top_n=5)
+    results = find_intraday_analogs(current_window, top_n=5, window_size=2)
 
     # Only one valid window: start=0, end=1, outcome at index 6 (=110.0)
     # next_5candle_return = (110 - 101) / 101 * 100

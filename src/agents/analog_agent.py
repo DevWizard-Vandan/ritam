@@ -8,7 +8,7 @@ from loguru import logger
 
 from src.agents.base import AgentBase, AgentSignal
 from src.config import settings
-from src.data.db import read_intraday_candles
+from src.data.db import read_candles, read_intraday_candles
 from src.reasoning.analog_finder import find_analogs, find_intraday_analogs
 
 
@@ -42,8 +42,6 @@ class AnalogAgent(AgentBase):
             outcome_key = "next_5candle_return"
         else:
             logger.info("AnalogAgent: falling back to daily candles")
-            from src.data.db import read_candles
-
             daily_candles = read_candles(
                 symbol=settings.NIFTY_SYMBOL,
                 from_date="2000-01-01",
