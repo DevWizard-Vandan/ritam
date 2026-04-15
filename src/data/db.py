@@ -95,6 +95,33 @@ def init_db():
             )
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS agent_weights (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_name TEXT NOT NULL,
+                weight REAL NOT NULL DEFAULT 0.10,
+                accuracy_7d REAL,           -- rolling 7-day accuracy (0.0–1.0)
+                accuracy_30d REAL,          -- rolling 30-day accuracy
+                total_predictions INT DEFAULT 0,
+                correct_predictions INT DEFAULT 0,
+                last_updated TEXT,          -- ISO8601 timestamp
+                UNIQUE(agent_name)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS weight_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_name TEXT NOT NULL,
+                weight REAL NOT NULL,
+                accuracy_7d REAL,
+                recorded_at TEXT NOT NULL   -- ISO8601 timestamp
+            )
+        """)
+        try:
+            conn.execute("ALTER TABLE predictions ADD COLUMN agent_signals TEXT DEFAULT NULL")
+        except sqlite3.OperationalError:
+            pass
+
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS agent_signal_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 cycle_id TEXT NOT NULL,
@@ -248,4 +275,76 @@ def log_agent_signals(cycle_id: str, signals: list) -> None:
             VALUES (:cycle_id, :agent_name, :signal, :confidence, :reasoning)
         """, [{"cycle_id": cycle_id, "agent_name": s.agent_name, "signal": s.signal,
                "confidence": s.confidence, "reasoning": s.reasoning} for s in signals])
+        conn.commit()
+
+
+def upsert_agent_weight(
+    agent_name: str,
+    weight: float,
+    accuracy_7d: float,
+    accuracy_30d: float,
+    total: int,
+    correct: int
+) -> None:
+    """Insert or update agent weight row."""
+    import pytz
+    from datetime import datetime
+    ist = pytz.timezone("Asia/Kolkata")
+    now = datetime.now(ist).isoformat()
+    with get_connection() as conn:
+        conn.execute("""
+            INSERT INTO agent_weights (agent_name, weight, accuracy_7d, accuracy_30d, total_predictions, correct_predictions, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(agent_name) DO UPDATE SET
+                weight = excluded.weight,
+                accuracy_7d = excluded.accuracy_7d,
+                accuracy_30d = excluded.accuracy_30d,
+                total_predictions = excluded.total_predictions,
+                correct_predictions = excluded.correct_predictions,
+                last_updated = excluded.last_updated
+        """, (agent_name, weight, accuracy_7d, accuracy_30d, total, correct, now))
+        conn.commit()
+
+def get_agent_weights() -> dict[str, float]:
+    """
+    Returns {agent_name: weight} for all agents.
+    If no row exists for an agent, caller uses hardcoded default.
+    """
+    with get_connection() as conn:
+        rows = conn.execute("SELECT agent_name, weight FROM agent_weights").fetchall()
+    return {row[0]: row[1] for row in rows}
+
+def get_agent_accuracy_stats() -> list[dict]:
+    """
+    Returns full stats rows for all agents.
+    Used in /api/agents/stats endpoint.
+    """
+    with get_connection() as conn:
+        rows = conn.execute("SELECT agent_name, weight, accuracy_7d, accuracy_30d, total_predictions, correct_predictions, last_updated FROM agent_weights").fetchall()
+    return [
+        {
+            "agent_name": row[0],
+            "weight": row[1],
+            "accuracy_7d": row[2],
+            "accuracy_30d": row[3],
+            "total_predictions": row[4],
+            "correct_predictions": row[5],
+            "last_updated": row[6]
+        }
+        for row in rows
+    ]
+
+def insert_weight_history(
+    agent_name: str, weight: float, accuracy_7d: float
+) -> None:
+    """Appends a row to weight_history for trend tracking."""
+    import pytz
+    from datetime import datetime
+    ist = pytz.timezone("Asia/Kolkata")
+    now = datetime.now(ist).isoformat()
+    with get_connection() as conn:
+        conn.execute("""
+            INSERT INTO weight_history (agent_name, weight, accuracy_7d, recorded_at)
+            VALUES (?, ?, ?, ?)
+        """, (agent_name, weight, accuracy_7d, now))
         conn.commit()

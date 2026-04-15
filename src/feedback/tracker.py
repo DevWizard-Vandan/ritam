@@ -80,6 +80,26 @@ class PredictionTracker:
                 conn.execute(
                     """
                     INSERT INTO predictions (
+<<<<<<< HEAD
+                        timestamp, predicted_direction, predicted_move_pct, confidence, timeframe_minutes, regime, source, agent_signals
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (timestamp, signal, 0.0, 0.5, 1440 if source == "daily" else 15, regime, source, agent_signals_json),
+                )
+            except sqlite3.OperationalError:
+                try:
+                    conn.execute("ALTER TABLE predictions ADD COLUMN agent_signals TEXT DEFAULT NULL")
+                    conn.execute(
+                        """
+                        INSERT INTO predictions (
+                            timestamp, predicted_direction, predicted_move_pct, confidence, timeframe_minutes, regime, source, agent_signals
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (timestamp, signal, 0.0, 0.5, 1440 if source == "daily" else 15, regime, source, agent_signals_json),
+                    )
+                except sqlite3.OperationalError:
+                    pass
+=======
                         timestamp, predicted_direction, predicted_move_pct,
                         confidence, timeframe_minutes, regime, source,
                         signal, predicted_at, agent_signals, resolved
@@ -100,6 +120,7 @@ class PredictionTracker:
                 )
             except sqlite3.OperationalError:
                 pass
+>>>>>>> origin/main
 
             conn.commit()
 

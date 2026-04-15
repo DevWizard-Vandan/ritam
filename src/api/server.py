@@ -19,7 +19,6 @@ from src.data.db import read_candles, get_connection
 from src.config import settings
 from src.feedback.tracker import PredictionTracker
 from src.feedback.loop import FeedbackLoop
-from src.learning import WeightUpdater
 from loguru import logger
 from src.reasoning.analog_finder import AnalogFinder
 import datetime as dt
@@ -94,9 +93,12 @@ def resolve_outcomes_job():
 
 def weight_update_job():
     try:
-        from src.learning.updater import update_weights
-        update_weights()
-        logger.info("Weekly weight update complete")
+        from src.learning.weight_updater import run_weight_update
+        result = run_weight_update()
+        logger.info(
+            f"Weight update complete: "
+            f"{len(result['agents'])} agents updated"
+        )
         scheduler_job_status["weight_updater"] = "success"
     except Exception as e:
         logger.error(f"Weight update failed: {e}", exc_info=True)
@@ -179,7 +181,6 @@ app = FastAPI(title="RITAM API", version="2.0", lifespan=lifespan)
 manager = WebSocketManager()
 tracker = PredictionTracker(settings.DB_PATH)
 loop = FeedbackLoop(tracker)
-updater = WeightUpdater(tracker)
 
 app.add_middleware(
     CORSMiddleware,
@@ -317,14 +318,47 @@ def get_agent_info():
     return {"weights": {}, "week_accuracy": None}
 
 
-@app.post("/api/learning/update-weights")
-def update_weights():
-    return updater.update_weights()
+@app.get("/api/agents/stats")
+def get_agents_stats():
+    from src.data.db import get_agent_accuracy_stats
+    import pytz
+    from datetime import datetime, timezone, timedelta
+
+    try:
+        ist = pytz.timezone("Asia/Kolkata")
+        now = datetime.now(ist).isoformat()
+    except ImportError:
+        ist = timezone(timedelta(hours=5, minutes=30))
+        now = datetime.now(ist).isoformat()
+
+    return {
+        "updated_at": now,
+        "agents": get_agent_accuracy_stats()
+    }
 
 
-@app.get("/api/learning/weights")
-def get_current_weights():
-    return updater.get_current_weights()
+@app.get("/api/weights/history")
+def get_weights_history(agent: str, limit: int = 10):
+    from src.data.db import get_connection
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT weight, accuracy_7d, recorded_at FROM weight_history WHERE agent_name = ? ORDER BY recorded_at DESC LIMIT ?",
+            (agent, limit)
+        ).fetchall()
+    return [
+        {
+            "weight": row[0],
+            "accuracy_7d": row[1],
+            "recorded_at": row[2]
+        }
+        for row in rows
+    ]
+
+
+@app.post("/api/weights/update")
+def trigger_weight_update():
+    from src.learning.weight_updater import run_weight_update
+    return run_weight_update()
 
 
 @app.websocket("/ws/predictions")

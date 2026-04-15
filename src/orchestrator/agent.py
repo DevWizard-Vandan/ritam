@@ -27,38 +27,30 @@ _ECONOMIC_CALENDAR_UNCERTAINTY_MULTIPLIER: float = 0.20
 LATEST_EXPLANATION = ""
 
 
+BASELINE_WEIGHTS = {
+    "FIIDerivativeAgent": 0.25,
+    "MarketBreadthAgent": 0.20,
+    "TechnicalPatternAgent": 0.20,
+    "RegimeCrossCheckAgent": 0.15,
+    "NewsImpactAgent": 0.10,
+    "OptionsChainAgent": 0.05,
+    "SectorRotationAgent": 0.03,
+    "GlobalMarketAgent": 0.02,
+    "EconomicCalendarAgent": 0.00,
+}
+
 def _weighted_fallback(
     agent_signals: list, regime: str
 ) -> "AgentSignal":
     """
     Computes a weighted vote from all agent signals when
     MacroSynthesisAgent is unavailable.
-
-    Weight rules:
-      FIIDerivativeAgent:    0.25  (strongest institutional signal)
-      MarketBreadthAgent:    0.20
-      TechnicalPatternAgent: 0.20
-      RegimeCrossCheckAgent: 0.15
-      NewsImpactAgent:       0.10
-      OptionsChainAgent:     0.05
-      SectorRotationAgent:   0.03
-      GlobalMarketAgent:     0.02
-      EconomicCalendarAgent: 0.00  (uncertainty flag only)
-    Default weight for unknown agents: 0.01
     """
     from src.agents.base import AgentSignal
+    from src.data.db import get_agent_weights
 
-    WEIGHTS = {
-        "FIIDerivativeAgent": 0.25,
-        "MarketBreadthAgent": 0.20,
-        "TechnicalPatternAgent": 0.20,
-        "RegimeCrossCheckAgent": 0.15,
-        "NewsImpactAgent": 0.10,
-        "OptionsChainAgent": 0.05,
-        "SectorRotationAgent": 0.03,
-        "GlobalMarketAgent": 0.02,
-        "EconomicCalendarAgent": 0.00,
-    }
+    db_weights = get_agent_weights()
+    WEIGHTS = {**BASELINE_WEIGHTS, **db_weights}
 
     # Check for EconomicCalendarAgent uncertainty penalty
     eco = next(
@@ -126,6 +118,7 @@ class OrchestratorResult:
     synthesis_reasoning: str = ""
     final_confidence: float = 0.0
     source: str = "daily"
+    agent_signals_json: str = ""
 
 
 class MarketOrchestrator:
@@ -300,6 +293,7 @@ class MarketOrchestrator:
 
         from src.data.db import log_agent_signals
         import uuid
+        import json
         cycle_id = str(uuid.uuid4())
         log_agent_signals(cycle_id=cycle_id, signals=agent_signals + [synthesis])
 
@@ -308,6 +302,16 @@ class MarketOrchestrator:
 
         global LATEST_EXPLANATION
         LATEST_EXPLANATION = explanation
+
+        signals_json = json.dumps([
+            {
+                "agent_name": s.agent_name,
+                "signal":     s.signal,
+                "confidence": s.confidence,
+                "reasoning":  s.reasoning[:200],  # truncate for storage
+            }
+            for s in agent_signals
+        ])
 
         result = OrchestratorResult(
             regime=regime,
@@ -319,6 +323,7 @@ class MarketOrchestrator:
             synthesis_reasoning=synthesis.reasoning,
             final_confidence=final_confidence,
             source=source,
+            agent_signals_json=signals_json,
         )
 
         timestamp = self.loop.record_prediction(result)
