@@ -3,6 +3,7 @@ import SignalPanel from './components/SignalPanel';
 import AccuracyPanel from './components/AccuracyPanel';
 import AnalogPanel from './components/AnalogPanel';
 import ExplanationPanel from './components/ExplanationPanel';
+import AgentWeightsPanel from './components/AgentWeightsPanel';
 
 function useCurrentTime() {
   const [time, setTime] = useState(new Date());
@@ -102,6 +103,11 @@ export default function App() {
           {/* Explanation Panel — bottom right, spans 7 cols */}
           <div className="lg:col-span-7 lg:row-span-1">
             <ExplanationPanel />
+          </div>
+
+          {/* Agent Weights Panel — full width bottom row */}
+          <div className="lg:col-span-12 lg:row-span-1">
+            <AgentWeightsPanel />
           </div>
         </div>
       </main>

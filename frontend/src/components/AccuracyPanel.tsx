@@ -98,6 +98,12 @@ export default function AccuracyPanel() {
 
       <div className="flex items-center gap-3 text-xs text-ash">
         <span>{total} resolved prediction{total !== 1 ? 's' : ''}</span>
+        {data && data.correct > 0 && (
+          <>
+            <span className="w-px h-3 bg-steel" />
+            <span>{data.correct} correct</span>
+          </>
+        )}
         {data && data.avg_error > 0 && (
           <>
             <span className="w-px h-3 bg-steel" />

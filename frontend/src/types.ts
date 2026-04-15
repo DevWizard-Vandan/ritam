@@ -25,6 +25,7 @@ export interface AccuracyResponse {
   correct: number;
   accuracy_pct: number;
   avg_error: number;
+  last_resolved?: string;
   by_signal: {
     buy: SignalByType;
     sell: SignalByType;
@@ -56,4 +57,25 @@ export interface PredictionData {
 export interface WsPredictionMessage {
   type: 'prediction';
   data: PredictionData;
+}
+
+export interface AgentStat {
+  agent_name: string;
+  weight: number;
+  accuracy_7d: number;
+  accuracy_30d: number;
+  total_predictions: number;
+  correct_predictions: number;
+  last_updated: string;
+}
+
+export interface AgentsStatsResponse {
+  updated_at: string;
+  agents: AgentStat[];
+}
+
+export interface WeightHistoryEntry {
+  weight: number;
+  accuracy_7d: number;
+  recorded_at: string;
 }

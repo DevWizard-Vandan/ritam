@@ -1,4 +1,4 @@
-import { useCandles } from '../hooks';
+import { useLivePrediction } from '../hooks';
 import type { PredictionData } from '../types';
 
 /* ── Mock signal data when backend is not available ── */
@@ -64,25 +64,9 @@ function formatTimestamp(ts: string): string {
 }
 
 export default function SignalPanel() {
-  const { data: candlesData, loading } = useCandles(1, 60_000);
+  const { data, loading, connected } = useLivePrediction(30_000);
 
-  /* Derive signal from latest candle's price movement for now */
-  const signal: PredictionData = (() => {
-    if (!candlesData || candlesData.candles.length === 0) return MOCK_SIGNAL;
-    const latest = candlesData.candles[candlesData.candles.length - 1];
-    const pctChange = latest.close && latest.open
-      ? ((latest.close - latest.open) / latest.open) * 100
-      : 0;
-    const direction = pctChange > 0.05 ? 'buy' : pctChange < -0.05 ? 'sell' : 'hold';
-    return {
-      timestamp: latest.timestamp_ist || new Date().toISOString(),
-      predicted_direction: direction,
-      predicted_move_pct: Math.abs(pctChange),
-      confidence: Math.min(0.95, 0.5 + Math.abs(pctChange) * 10),
-      timeframe_minutes: 20,
-      regime: Math.abs(pctChange) > 0.5 ? 'event_driven' : 'baseline',
-    };
-  })();
+  const signal: PredictionData = data ?? MOCK_SIGNAL;
 
   const cfg = getSignalConfig(signal.predicted_direction);
   const sentimentScore = signal.confidence;
@@ -101,6 +85,11 @@ export default function SignalPanel() {
       <div className="relative z-10 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-mist">
         <span className={`w-2 h-2 rounded-full ${cfg.dotColor} animate-pulse-slow`} />
         Live Signal
+        {!loading && (
+          <span className={`ml-1 text-[10px] ${connected ? 'text-signal-buy' : 'text-ash'}`}>
+            {connected ? '● WS' : '○ REST'}
+          </span>
+        )}
       </div>
 
       {/* Main signal */}
