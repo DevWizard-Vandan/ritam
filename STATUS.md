@@ -1,5 +1,5 @@
 # RITAM - Project Status
-# Last Updated: April 15, 2026 - L4 RL Weight Updater live, L5–L9 roadmap defined
+# Last Updated: April 15, 2026 - L4 RL Weight Updater live, L5–L9 roadmap corrected
 # Updating Agent: Vandan
 
 ---
@@ -62,77 +62,74 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
   - `OptionsChainAgent`: robust warm-up headers, full try/except fallback with `available` flag, fixed max_pain comment
   - `MarketBreadthAgent`: multi-endpoint fallback, Content-Type check, `isinstance` guard for string items, `available` flag
   - `GlobalMarketAgent`: replaced per-ticker loop with batch `yf.download` + exponential backoff (3 attempts)
+- [x] L0: Gemini 7-key routing ✅ merged PR #31
+- [x] L1: Auto-Scheduler ✅ APScheduler every 5 min, built into server lifespan
+- [x] L2: Macro Signal Agents ✅ 9 agents, parallel execution
+- [x] L3: 15-min Intraday ⚠️ 80% — Issue #43 assigned to Jules
+  - `intraday_candles` table seeded from Kite (15-min OHLCV)
+  - `src/data/intraday_seeder.py` — incremental sync, runs on server startup
+  - `src/learning/intraday_resolver.py` — resolves predictions after 5 candles (75 min), sets `resolved=1` and `signal`
+  - `src/learning/weight_updater.py` — RL weight update every Sunday
+  - **Missing**: `find_intraday_analogs()` in `analog_finder.py` — Jules on Issue #43
+    - Must use `read_intraday_candles()` with 20-candle windows, 5-candle outcomes
+    - `AnalogAgent` needs fallback: intraday if ≥20 candles available, else daily
+- [x] L4: RL Weight Updater ✅ merged PR #41
+  - Per-agent accuracy tracked (7d + 30d windows)
+  - Weights update every Sunday at 00:00 IST (first run: Apr 19, 2026)
+  - Live weights loaded into `_weighted_fallback` on every cycle
+  - `/api/agents/stats`, `/api/weights/history`, `/api/weights/update` endpoints live
+  - 25 candles synced today, 17 predictions resolved with outcomes
 
 ---
 
 ## In Progress
-- `task_006` - multi-agent orchestrator foundation [Codex]
+- Issue #43 — Jules working on L3 completion (`find_intraday_analogs()`). PR incoming.
+- PR #42 — Copilot working on Live Dashboard wiring (React frontend → live backend). Maps to **L7** in corrected plan. Review carefully before merging — do NOT let it block L5 Paper Trading.
 
 ---
 
 ## Blocked / Issues
-- `tests/api/test_server.py::test_candles_endpoint_returns_200` — pre-existing failure (candles table not initialised in test DB, unrelated to agent hotfix)
+- `tests/api/test_server.py::test_candles_endpoint_returns_200` — pre-existing failure (candles table not initialised in test DB)
 
 ---
 
 ## Up Next
 
-### Completed Layers
-- [x] L0: Gemini dual-key routing ✅ merged PR #31
-- [ ] L1: Scheduler + 7-key expansion + agent scaffold — open PR #32
-- [x] L2: Macro Signal Agents ✅ merged (9 agents, parallel execution)
-- [x] L3: 15-min intraday data ✅ merged PR #35
-    - intraday_candles table seeded
-    - dual resolution mode active
-    - outcomes resolve every 75 minutes
-    - RL updater learns 35x faster
-    - `find_intraday_analogs()` wired to 15-min windows (20-candle window, 5-candle outcome)
-    - `AnalogAgent` uses intraday when ≥20 candles available, falls back to daily otherwise
-- [x] L4: RL Weight Updater ✅ merged PR #41
-    - Per-agent accuracy tracked (7d + 30d windows)
-    - Weights update every Sunday at 00:00 IST
-    - Live weights loaded into _weighted_fallback on every cycle
-    - /api/agents/stats endpoint live
-    - intraday_resolver marks resolved=1 correctly
+### Pending Layers (Corrected Definitions — Apr 15, 2026)
 
-### Pending Layers
-- [ ] L5: Live Dashboard
-    - Wire React frontend (`frontend/`) to live backend endpoints
-    - Connect WebSocket to real-time signal panel
-    - Display agent weights from `/api/agents/stats`
-    - Show regime, sentiment score, and last explanation live
-    - Deploy locally at `localhost:5173` with `npm run dev`
-    - Stretch: deploy to Vercel for public access
+- [ ] **L5: Paper Trading Engine**
+    - Wire BUY/SELL/HOLD signal → Zerodha paper trading (no real money)
+    - Track P&L, Sharpe ratio, win-rate separately from prediction accuracy
+    - Builds a verifiable live track record
+    - Use Kite's paper trading mode or simulate with a local engine tracking virtual positions
+    - Assign to Jules or Copilot after Issue #43 PR merges
 
-- [ ] L6: Alert System
-    - Push Telegram message when signal flips hold → buy or hold → sell
-    - Include: signal, confidence, regime, top 2 agents by weight
-    - Cooldown: max 1 alert per 30 minutes
-    - Config via `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` in `.env`
-    - Stretch: WhatsApp via Twilio
+- [ ] **L6: Signal Quality + Backtesting**
+    - Run 3-month historical backtest on stored predictions + outcomes
+    - Compare RL-weighted agent accuracy vs equal-weight baseline
+    - Output: win rate, Sharpe ratio, drawdown, equity curve
+    - Report saved to `reports/backtest_YYYY-MM-DD.html`
+    - Walk-forward validation (re-weight weekly, test next week)
 
-- [ ] L7: Backtesting + Accuracy Validation
-    - Run 3-month historical backtest using stored predictions + outcomes
-    - Compare RL-weighted agent accuracy vs baseline (equal weights)
-    - Plot: equity curve, drawdown, win rate, Sharpe ratio
-    - Output report to `reports/backtest_YYYY-MM-DD.html`
-    - Stretch: walk-forward validation (re-weight every week, test next week)
+- [ ] **L7: Live Prediction Chart Dashboard**
+    - Full React dashboard: live Nifty 50 candlestick + RITAM prediction zone overlay
+    - 9 agent signal bars with live weights, accuracy tracker
+    - WebSocket real-time updates
+    - Deploy locally at `localhost:5173`. Stretch: Vercel deploy
+    - PR #42 is a head start on this layer
 
-- [ ] L8: Local Gemma Reasoning (Zero API Cost)
-    - Replace Gemini Flash-Lite (`quick_reason`) with local `gemma4:2b` via Ollama
-    - Replace Gemini Flash (`deep_reason`) with local `gemma4:26b` via Ollama (GPU)
-    - Fallback chain: Ollama → Gemini key_1 → Gemini key_2
-    - Benchmark: latency + accuracy vs current Gemini-only setup
-    - Goal: Rs0/month API cost for reasoning layer
+- [ ] **L8: Invite-Only Deploy**
+    - Docker + `docker-compose up` starts API + frontend + scheduler
+    - Deploy API to Fly.io, frontend to Vercel
+    - Migrate SQLite → PostgreSQL
+    - Auth layer (invite-only)
+    - `/health` endpoint with DB ping + last cycle timestamp
+    - Sentry/Logfire error tracking
 
-- [ ] L9: Production Hardening + Deployment
-    - Migrate SQLite → PostgreSQL for multi-session safety
-    - Dockerize: `docker-compose up` starts API + frontend + scheduler
-    - Deploy API to Fly.io or Railway (always-on, free tier)
-    - Deploy frontend to Vercel
-    - Add `/health` endpoint with DB ping + last cycle timestamp
-    - Add Sentry or Logfire for error tracking
-    - Stretch: auto-restart on crash with supervisor/systemd
+- [ ] **L9: Public + Pricing**
+    - Stripe integration
+    - User tiers: free = delayed signals, paid = live
+    - Public launch
 
 ---
 
