@@ -86,6 +86,8 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
     - dual resolution mode active
     - outcomes resolve every 75 minutes
     - RL updater learns 35x faster
+    - `find_intraday_analogs()` wired to 15-min windows (20-candle window, 5-candle outcome)
+    - `AnalogAgent` uses intraday when ≥20 candles available, falls back to daily otherwise
 - [x] L4: RL Weight Updater ✅ merged PR #41
     - Per-agent accuracy tracked (7d + 30d windows)
     - Weights update every Sunday at 00:00 IST

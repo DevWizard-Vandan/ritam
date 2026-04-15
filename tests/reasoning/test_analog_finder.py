@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from src.reasoning.analog_finder import find_analogs
+from src.reasoning.analog_finder import find_analogs, find_intraday_analogs
 
 
 def _candles_from_closes(closes: list[float], start_day: int = 1) -> list[dict]:
@@ -11,6 +11,32 @@ def _candles_from_closes(closes: list[float], start_day: int = 1) -> list[dict]:
             {
                 "timestamp_ist": f"2020-01-{day:02d}T15:30:00+05:30",
                 "close": close,
+            }
+        )
+    return candles
+
+
+def _intraday_candles_from_closes(closes: list[float]) -> list[dict]:
+    """Generate synthetic 15-min intraday candles (9:15 + 15-min steps)."""
+    candles = []
+    # Spread across multiple days as needed (each day has 25 slots: 09:15–15:30)
+    slots_per_day = 25
+    for idx, close in enumerate(closes):
+        day = idx // slots_per_day + 1
+        slot = idx % slots_per_day
+        minutes_from_start = slot * 15 + 15
+        hour = 9 + minutes_from_start // 60
+        minute = minutes_from_start % 60
+        candles.append(
+            {
+                "timestamp_ist": (
+                    f"2020-01-{day:02d}T{hour:02d}:{minute:02d}:00+05:30"
+                ),
+                "open": close,
+                "high": close,
+                "low": close,
+                "close": close,
+                "volume": 1000,
             }
         )
     return candles
@@ -86,3 +112,79 @@ def test_find_analogs_returns_empty_for_non_positive_top_n(mock_read_candles):
     mock_read_candles.return_value = _candles_from_closes([100, 101, 102, 103, 104, 105, 106, 107], start_day=1)
 
     assert find_analogs(current_window, top_n=0) == []
+
+
+# ── find_intraday_analogs tests ──────────────────────────────────────────────
+
+
+@patch("src.reasoning.analog_finder.read_intraday_candles")
+def test_find_intraday_analogs_returns_top_n(mock_read_intraday):
+    """Synthetic 15-min candles: verify top_n matches are returned."""
+    # current window of 3 candles, historical of 30 (enough for window_len=3 + 5 outcome)
+    historical = _intraday_candles_from_closes(
+        [100.0 + i * 0.5 for i in range(30)]
+    )
+    mock_read_intraday.return_value = historical
+
+    current_window = _intraday_candles_from_closes([100.0, 100.5, 101.0])
+    results = find_intraday_analogs(current_window, top_n=2)
+
+    assert len(results) == 2
+
+
+@patch("src.reasoning.analog_finder.read_intraday_candles")
+def test_find_intraday_analogs_insufficient_data(mock_read_intraday):
+    """Fewer than window_size candles in history → returns []."""
+    # Only 4 historical rows; need at least window_len(2) + 5 = 7
+    historical = _intraday_candles_from_closes([100.0, 101.0, 102.0, 103.0])
+    mock_read_intraday.return_value = historical
+
+    current_window = _intraday_candles_from_closes([100.0, 101.0])
+    results = find_intraday_analogs(current_window, top_n=3)
+
+    assert results == []
+
+
+@patch("src.reasoning.analog_finder.read_intraday_candles")
+def test_find_intraday_analogs_result_shape(mock_read_intraday):
+    """Verify returned dicts contain exactly the expected keys."""
+    historical = _intraday_candles_from_closes(
+        [100.0 + i * 0.3 for i in range(20)]
+    )
+    mock_read_intraday.return_value = historical
+
+    current_window = _intraday_candles_from_closes([100.0, 100.3, 100.6])
+    results = find_intraday_analogs(current_window, top_n=1)
+
+    assert len(results) == 1
+    assert set(results[0].keys()) == {
+        "start_date",
+        "end_date",
+        "similarity_score",
+        "next_5candle_return",
+    }
+
+
+@patch("src.reasoning.analog_finder.read_intraday_candles")
+def test_find_intraday_analogs_outcome_is_5_candles(mock_read_intraday):
+    """Verify the outcome is computed exactly 5 candles forward from the window end."""
+    # Build a known sequence: window ends at index (window_len-1), outcome at index (window_len+4)
+    # Use a flat then jump pattern so the outcome is deterministic.
+    closes = [100.0] * 7 + [200.0]  # 7 flat, then one jump at index 7
+    # current_window = closes[0:2] (len=2), window_len=2
+    # end_idx = 1, next_idx = 1+5 = 6, so outcome uses closes[1]=100 and closes[6]=100 → 0%
+    # But the first match window is [0:2], outcome = closes[6] / closes[1] - 1 = 0%
+    # The match at window [2:4] would give outcome at closes[8] which doesn't exist, etc.
+    # Simpler: window of 2 candles, history of exactly 7 rows
+    historical = _intraday_candles_from_closes([100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 110.0])
+    mock_read_intraday.return_value = historical
+
+    current_window = _intraday_candles_from_closes([100.0, 101.0])
+    results = find_intraday_analogs(current_window, top_n=5)
+
+    # Only one valid window: start=0, end=1, outcome at index 6 (=110.0)
+    # next_5candle_return = (110 - 101) / 101 * 100
+    assert len(results) == 1
+    expected_return = round(((110.0 - 101.0) / 101.0) * 100.0, 4)
+    assert results[0]["next_5candle_return"] == expected_return
+

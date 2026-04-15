@@ -5,8 +5,8 @@ from __future__ import annotations
 import math
 from typing import Iterable
 
-from src.config.settings import settings
-from src.data.db import read_candles
+from src.config import settings
+from src.data.db import read_candles, read_intraday_candles
 
 
 def _extract_close_series(candles: Iterable[dict]) -> list[float]:
@@ -160,6 +160,88 @@ def find_analogs(
                 "end_date": _to_date(str(window[-1].get("timestamp_ist", ""))),
                 "similarity_score": round(float(similarity), 6),
                 "next_5day_return": round(next_5day_return, 4),
+            }
+        )
+
+    matches.sort(key=lambda item: item["similarity_score"], reverse=True)
+    return matches[:top_n]
+
+
+def find_intraday_analogs(
+    current_window: list[dict],
+    top_n: int = 5,
+    symbol: str | None = None,
+    window_size: int = 20,
+) -> list[dict]:
+    """
+    Find the most similar historical 15-min intraday windows vs the current window.
+
+    Args:
+        current_window: Last N 15-min candles from intraday_candles, each containing
+            at least {timestamp_ist, close}.
+        top_n: Number of best matches to return.
+        symbol: Instrument symbol used to query historical intraday candles.
+            Defaults to settings.INTRADAY_SYMBOL if not provided.
+        window_size: Number of 15-min candles per comparison window (default 20 = 5 hours).
+
+    Returns:
+        List of dicts with start_date, end_date, similarity_score, and next_5candle_return.
+        Returns [] if current_window has fewer than 2 candles or insufficient history.
+    """
+    if symbol is None:
+        symbol = settings.INTRADAY_SYMBOL
+    if top_n <= 0 or len(current_window) < 2:
+        return []
+
+    current_closes = _extract_close_series(current_window)
+    current_returns = _pct_returns(current_closes)
+    if not current_returns:
+        return []
+
+    window_len = len(current_window)
+    outcome_candles = 5  # resolve outcome after 5 candles (75 minutes)
+
+    historical = read_intraday_candles(symbol=symbol)
+
+    if len(historical) < window_len + outcome_candles:
+        return []
+
+    matches: list[dict] = []
+    last_start_index = len(historical) - window_len - outcome_candles
+
+    for start_idx in range(last_start_index + 1):
+        window = historical[start_idx : start_idx + window_len]
+        window_closes = _extract_close_series(window)
+        window_returns = _pct_returns(window_closes)
+        if not window_returns:
+            continue
+
+        similarity = _cosine_similarity(current_returns, window_returns)
+        if similarity is None:
+            similarity = _dtw_similarity(current_returns, window_returns)
+
+        end_idx = start_idx + window_len - 1
+        next_idx = end_idx + outcome_candles
+        end_close = historical[end_idx].get("close")
+        next_close = historical[next_idx].get("close")
+
+        try:
+            end_close = float(end_close)
+            next_close = float(next_close)
+        except (TypeError, ValueError):
+            continue
+
+        if end_close == 0:
+            continue
+
+        next_5candle_return = ((next_close - end_close) / end_close) * 100.0
+
+        matches.append(
+            {
+                "start_date": _to_date(str(window[0].get("timestamp_ist", ""))),
+                "end_date": _to_date(str(window[-1].get("timestamp_ist", ""))),
+                "similarity_score": round(float(similarity), 6),
+                "next_5candle_return": round(next_5candle_return, 4),
             }
         )
 
