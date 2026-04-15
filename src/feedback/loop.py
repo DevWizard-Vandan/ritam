@@ -1,4 +1,3 @@
-import json
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import TYPE_CHECKING
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-
 class FeedbackLoop:
     def __init__(self, tracker: PredictionTracker, symbol: str | None = None):
         self.tracker = tracker
@@ -20,21 +18,7 @@ class FeedbackLoop:
     def record_prediction(self, result: "OrchestratorResult") -> str:
         ist_tz = timezone(timedelta(hours=5, minutes=30))
         timestamp = datetime.now(ist_tz).replace(microsecond=0).isoformat()
-        analog_similarity = (
-            result.top_analogs[0].get("similarity_score", 0.0)
-            if result.top_analogs else 0.0
-        )
-
-        # Serialize agent signals for L4 accuracy tracking
-        agent_signals_json = json.dumps([
-            {
-                "agent_name": s.get("agent_name", ""),
-                "signal":     s.get("signal", 0),
-                "confidence": s.get("confidence", 0.0),
-                "reasoning":  (s.get("reasoning") or "")[:200],
-            }
-            for s in (result.agent_signals or [])
-        ])
+        analog_similarity = result.top_analogs[0].get("similarity_score", 0.0) if result.top_analogs else 0.0
 
         self.tracker.record_prediction(
             timestamp=timestamp,
@@ -42,10 +26,8 @@ class FeedbackLoop:
             sentiment_score=result.sentiment_score,
             regime=result.regime,
             analog_similarity=analog_similarity,
-            source=result.source,
-            agent_signals_json=agent_signals_json,
+            source=result.source
         )
-
         return timestamp
 
     def resolve_outcome(self, timestamp: str) -> dict | None:
@@ -56,13 +38,17 @@ class FeedbackLoop:
             return None
 
         next_day_iso = (entry_date + timedelta(days=1)).isoformat()
+
         candles = read_candles(self.symbol, timestamp, next_day_iso)
 
         if not candles or len(candles) < 2:
             return None
 
-        entry_close  = candles[0]["close"]
-        next_close   = candles[-1]["close"]
+        entry_candle = candles[0]
+        next_candle = candles[-1]
+
+        entry_close = entry_candle["close"]
+        next_close = next_candle["close"]
 
         if entry_close == 0:
             return None
@@ -76,6 +62,6 @@ class FeedbackLoop:
             return None
 
         return {
-            "timestamp":         timestamp,
-            "actual_return_pct": actual_return_pct,
+            "timestamp": timestamp,
+            "actual_return_pct": actual_return_pct
         }
