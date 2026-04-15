@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import TYPE_CHECKING
 from src.feedback.tracker import PredictionTracker
-from src.data.db import read_candles, get_connection
+from src.data.db import read_candles
 from src.config import settings
 
 if TYPE_CHECKING:
@@ -36,7 +36,6 @@ class FeedbackLoop:
             for s in (result.agent_signals or [])
         ])
 
-        # Write old columns (backward compat) + new L4 columns
         self.tracker.record_prediction(
             timestamp=timestamp,
             signal=result.signal,
@@ -44,29 +43,8 @@ class FeedbackLoop:
             regime=result.regime,
             analog_similarity=analog_similarity,
             source=result.source,
+            agent_signals_json=agent_signals_json,
         )
-
-        # Patch in the new columns immediately after insert
-        with get_connection() as conn:
-            conn.execute(
-                """
-                UPDATE predictions
-                SET signal       = ?,
-                    predicted_at = ?,
-                    agent_signals = ?,
-                    resolved     = 0
-                WHERE timestamp  = ?
-                  AND source     = ?
-                """,
-                (
-                    result.signal,
-                    timestamp,
-                    agent_signals_json,
-                    timestamp,
-                    result.source,
-                ),
-            )
-            conn.commit()
 
         return timestamp
 
@@ -98,6 +76,6 @@ class FeedbackLoop:
             return None
 
         return {
-            "timestamp":        timestamp,
+            "timestamp":         timestamp,
             "actual_return_pct": actual_return_pct,
         }
