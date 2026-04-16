@@ -1,12 +1,14 @@
 # Architecture Decision Records (DECISIONS.md)
 # READ BEFORE MAKING ANY STRUCTURAL CHANGES
 # Add a new entry every time a major technical decision is made.
+# NEVER modify or delete existing ADRs.
 
 ---
 
-## ADR-001: Database — SQLite (Dev) → TimescaleDB (Production)
-- **Decision:** Use SQLite locally during development. Migrate to TimescaleDB on cloud at Phase 7.
-- **Reason:** Zero setup for development, TimescaleDB handles time-series at scale in production.
+## ADR-001: Database — SQLite (Dev) → PostgreSQL (Production)
+- **Decision:** Use SQLite locally during development. Migrate to PostgreSQL at L8 deploy.
+- **Reason:** Zero setup for development. PostgreSQL handles concurrent connections and scale in production.
+- **Note:** Originally planned TimescaleDB — simplified to PostgreSQL (ADR-012).
 - **Date:** Project start
 - **DO NOT change without discussion.**
 
@@ -28,11 +30,11 @@
 
 ---
 
-## ADR-004: Agent Framework — LangGraph
-- **Decision:** Use LangGraph for multi-agent orchestration.
-- **Reason:** Supports parallel agent execution, state management, and conditional routing natively.
-- **Alternative rejected:** CrewAI (less control over state), plain Python threads (no observability)
-- **Date:** Project start
+## ADR-004: Agent Framework — Custom Parallel (asyncio)
+- **Decision:** Use custom parallel execution via asyncio/FastAPI, not LangGraph.
+- **Reason:** 9 agents run in parallel every 5 minutes. Direct asyncio gives full control, no framework overhead.
+- **Original decision:** LangGraph — superseded by actual implementation.
+- **Date:** v2 architecture
 
 ---
 
@@ -40,13 +42,13 @@
 - **Decision:** Every prediction output must be a dict with this exact schema:
 ```python
 {
-  "timestamp": "2026-04-05T15:30:00+05:30",  # IST
+  "timestamp": "2026-04-15T15:30:00+05:30",  # IST
   "predicted_direction": "up" | "down" | "neutral",
-  "predicted_move_pct": 0.42,                 # e.g., +0.42%
-  "confidence": 0.74,                         # 0 to 1
-  "timeframe_minutes": 20,
-  "signals_used": ["sentiment", "gift_nifty", "macro", "volatility"],
-  "regime": "event_driven" | "baseline"
+  "predicted_move_pct": 0.42,
+  "confidence": 0.74,
+  "timeframe_minutes": 15,
+  "signals_used": ["sentiment", "fii_derivative", "options_chain", "macro", "analog"],
+  "regime": "trending_up" | "crisis" | "ranging" | "recovery"
 }
 ```
 - **Reason:** Standardized output allows consistent error scoring and model comparison.
@@ -69,43 +71,67 @@
 - **Reason:** Avoids DST confusion, aligns with NSE/BSE market hours (9:15 AM – 3:30 PM IST).
 - **Date:** Project start
 
+---
+
+## ADR-008: Local LLM — SUPERSEDED by ADR-013
+- **Original decision:** Gemma 4 via Ollama as primary local LLM.
+- **Status:** Superseded. See ADR-013.
+- **Date:** v2 architecture (original)
 
 ---
 
-## ADR-008: Local LLM — Gemma 4 via Ollama (NOT direct HuggingFace)
-- **Decision:** Run Gemma 4 E2B and 26B via Ollama (ollama.ai), not raw HuggingFace transformers.
-- **Reason:** Ollama handles model download, quantization (4-bit for memory savings), and exposes
-  a simple REST API (localhost:11434) compatible with OpenAI SDK. Zero extra code to manage GPU/CPU.
-- **Usage:** `ollama pull gemma4:2b` and `ollama pull gemma4:26b` — then call via openai Python SDK.
-- **Fallback chain:** Gemma 4 E2B (local) → Gemma 4 26B (local, on demand) → Gemini 2.5 Flash (cloud)
-- **Date:** v2 architecture
-
----
-
-## ADR-009: Dashboard Stack — FastAPI WebSocket + Flutter
-- **Decision:** Backend = FastAPI with native WebSocket support. Frontend = Flutter Web.
-- **Reason:** FastAPI streams live predictions every 60 seconds with minimal latency.
-  Flutter is already in our stack (Vandan's expertise), reuses Dart skills, single codebase for
-  web + mobile later.
-- **Alternative rejected:** React (adds JavaScript/TypeScript to the stack unnecessarily)
+## ADR-009: Dashboard Stack — React + Vite + TypeScript + Tailwind
+- **Decision:** Frontend = React + Vite + TypeScript + Tailwind CSS. Backend = FastAPI WebSocket.
+- **Reason:** FastAPI streams live predictions every 5 minutes with minimal latency.
+  React chosen over Flutter for web-first delivery and easier Vercel deployment.
+- **Original decision:** Flutter Web — superseded by actual implementation.
 - **WebSocket endpoint:** ws://localhost:8000/ws/predictions
-- **Date:** v2 architecture
+- **Chart library:** TradingView Lightweight Charts or Recharts (L7)
+- **Animations:** Framer Motion (L7)
+- **Date:** v2 architecture (updated Apr 2026)
 
 ---
 
-## ADR-010: New Agent — AnalogAgent (5th agent, Gemma-powered)
-- **Decision:** Add a 5th agent: AnalogAgent, powered exclusively by Gemma 4 26B.
-- **Responsibility:** Given today's conditions (regime, macro state, news type, VIX level),
-  find the 3 most similar historical scenarios from training data and report what markets did.
-- **Output:** {match_name, similarity_score, analog_outcome, confidence}
-- **Weight in aggregator:** Starts at 0.15 (lower than others — builds trust over time via RL)
-- **Date:** v2 architecture
+## ADR-010: AnalogAgent — Intraday 15-min Windows (20 candles)
+- **Decision:** AnalogAgent uses `find_intraday_analogs()` with 20-candle windows and 5-candle outcomes when ≥20 intraday candles are available. Falls back to daily `find_analogs()` otherwise.
+- **Reason:** 15-min resolution gives 35x more training signal per day vs daily candles. Faster RL learning.
+- **Output key:** `next_5candle_return` (not `next_5day_return`) to distinguish intraday from daily.
+- **Date:** L3 completion (Apr 2026)
 
 ---
 
-## ADR-011: Ollama Must Be Running Before RITAM Starts
-- **Decision:** RITAM's startup sequence checks if Ollama is running on localhost:11434.
-  If not, it logs a warning and disables AnalogAgent + Gemma reasoning, falling back to
-  FinBERT-only mode. System never crashes due to missing Ollama — degrades gracefully.
-- **Date:** v2 architecture
+## ADR-011: RL Weight Update Schedule — Sunday 00:00 IST
+- **Decision:** PPO weight update fires every Sunday at 00:00 IST via APScheduler.
+- **Reason:** Weekly cadence balances learning speed vs stability. Weekend update avoids mid-market disruption.
+- **Emergency recalibration (future):** Trigger early weight update if 3 consecutive wrong calls detected.
+- **Date:** L4 completion (Apr 2026)
 
+---
+
+## ADR-012: Production Database — PostgreSQL (not TimescaleDB)
+- **Decision:** Migrate from SQLite to PostgreSQL at L8, not TimescaleDB.
+- **Reason:** TimescaleDB adds operational complexity with marginal benefit at our data volume.
+  PostgreSQL with a `timestamp` index is sufficient for RITAM's query patterns.
+- **Migration target:** L8 Invite-Only Deploy.
+- **Date:** Apr 2026
+
+---
+
+## ADR-013: Primary LLM — Gemini 2.5 Flash (7-Key Rotation), Gemma Removed
+- **Decision:** Gemini 2.5 Flash is the primary reasoning LLM. Gemma/Ollama fully removed from the stack.
+- **Reason:** 7 Google account API keys with round-robin fallback gives effectively unlimited free throughput — exceeds paid tier capacity. Local Gemma setup added operational complexity (Ollama server, GPU memory, model pulls) with no cost benefit given the free Gemini throughput available.
+- **Key rotation:** key_1 → key_2 → ... → key_7 → key_1. On rate limit or failure, immediately falls back to next key.
+- **Quick reasoning:** Gemini Flash-Lite for fast/cheap calls. Gemini 2.5 Flash for deep reasoning.
+- **Scalability:** Can add another 7 keys (14 total) if throughput needs grow.
+- **Alternative rejected:** Gemma 4 via Ollama (removed), OpenAI GPT-4o (paid, unnecessary)
+- **Date:** Apr 2026
+
+---
+
+## ADR-014: Paper Trading — Local Virtual Engine (not Zerodha Paper Mode)
+- **Decision:** Implement a local `PaperTradingEngine` class tracking virtual positions in SQLite, not Zerodha's paper trading mode.
+- **Reason:** Zerodha paper trading requires broker-side setup and has API limitations. Local engine gives full control over position logic, P&L calculation, and Sharpe ratio tracking. Deterministic and testable.
+- **Trade size:** 1 lot = 50 units (Nifty standard). Configurable via `settings.PAPER_LOT_SIZE`.
+- **Starting capital:** 100,000 INR. Configurable via `settings.PAPER_CAPITAL`.
+- **One position at a time:** No pyramiding.
+- **Date:** L5 (Apr 2026)

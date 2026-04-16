@@ -1,95 +1,67 @@
 # RITAM - Project Status
-# Last Updated: April 15, 2026 - L4 RL Weight Updater live, L5–L9 roadmap corrected
+# Last Updated: April 15, 2026 — Full roadmap corrected, L3+L4+L7 done, L5 in progress
 # Updating Agent: Vandan
 
 ---
 
-## Current Phase
-**Phase 1 - Data Pipeline**  
-Goal: Get real Nifty 50 OHLCV data flowing into the local database.
+## Vision
+**"Not prediction. Perception."**
+Self-improving multi-agent AI system for real-time Nifty 50 prediction.
+9 specialist agents act as sensors. Gemini 2.5 Flash (7-key rotation) acts as the reasoning brain.
+The system gets smarter every week via RL weight updates and grows its analog memory with every resolved prediction.
+
+---
+
+## Architecture Notes
+- **LLM Brain:** Gemini 2.5 Flash (primary) + Gemini Flash-Lite (quick reasoning). Gemma/Ollama fully removed.
+- **Key Rotation:** 7 Google account Gemini API keys with round-robin fallback — effectively unlimited free throughput, exceeds paid tier.
+- **9 Agents:** FIIDerivativeAgent, OptionsChainAgent, SectorRotationAgent, MarketBreadthAgent, GlobalMarketAgent, SentimentAgent, RegimeClassifierAgent, AnalogAgent, MacroAgent — run in parallel every cycle.
+- **Prediction cycle:** Every 5 minutes (reducible to 1-min in future — compute is not the bottleneck, only Kite API rate limits).
+- **Self-improvement loops:**
+  1. Weekly RL weight update (PPO, every Sunday 00:00 IST) — right agents get more voting power
+  2. Analog memory growth — every resolved prediction adds to historical pattern library
+  3. Gemini in-context learning — reasoning over recent prediction history + outcomes
+- **Recalibration:** Currently weekly. Future: emergency re-weight on 3 consecutive wrong calls or regime flip.
 
 ---
 
 ## Completed
-- [x] Project scaffold created (v2 architecture)
-- [x] `AGENTS.md` - full v2 vision and architecture documented
-- [x] `DECISIONS.md` - 11 ADRs documented
-- [x] All 12 task files created (Phases 1-7)
-- [x] `requirements.txt` - all dependencies listed
-- [x] `src/config/settings.py` - env loader
-- [x] `src/data/kite_client.py` - live Kite Connect path enabled when credentials exist, with yfinance fallback (`^NSEI` / `^NSEBANK`) and multi-index candle parsing fix
-- [x] `scripts/seed_historical.py` and `scripts/verify_db.py` - repo-root bootstrap added so `python scripts/...` works without manual `PYTHONPATH`
-- [x] `src/data/kite_feed.py` - real Kite historical seeding now chunks long day ranges into provider-safe windows
-- [x] `src/data/db.py` - SQLite helpers (write/read candles)
-- [x] `src/data/kite_feed.py` - OHLCV fetcher boilerplate
-- [x] `src/sentiment/preprocessor.py` - headline cleaner
-- [x] `src/sentiment/scorer.py` - FinBERT scorer (full implementation)
-- [x] `src/agents/aggregator.py` - master signal aggregator
-- [x] `src/reasoning/gemma_client.py` - Gemma 4 E2B/26B via Ollama + Gemini fallback
-- [x] `src/reasoning/analog_finder.py` - historical analog finder (Gemma-powered)
-- [x] `src/reasoning/regime_classifier.py` - regime classifier (Gemma-powered)
-- [x] `src/api/server.py` - FastAPI WebSocket server
-- [x] `src/api/websocket_manager.py` - WebSocket connection manager
-- [x] `config/agent_weights.json` - initial equal weights
-- [x] `src/data/news_fetcher.py` - NewsAPI + RSS ingestion with APScheduler job and SQLite `news_raw` persistence
-- [x] `tests/data/test_news_fetcher.py` - mocked unit tests for news ingestion pipeline
-- [x] Initial test suite - Phase 1
-- [x] `scripts/seed_historical.py` - Historical DB seeding script
-- [x] `scripts/verify_db.py` - DB verification script
-- [x] `src/backtest/engine.py` - Backtrader engine with SMA crossover, trade log, and performance metrics
-- [x] `tests/backtest/test_engine.py` - synthetic-candle unit tests (no DB calls)
-- [x] `src/reasoning/analog_finder.py` - DB-driven historical window matcher (cosine/DTW) with next-5-day outcome
-- [x] `tests/reasoning/test_analog_finder.py` - mocked unit tests for analog matching logic
-- [x] `src/reasoning/analog_finder.py` - review fixes: intraday-to-daily collapse, symbol parameter, bounded history range
-- [x] `src/rl/trading_env.py` - Gymnasium `NiftyTradingEnv` (20-candle normalized OHLCV, discrete actions, PnL reward)
-- [x] `src/rl/trainer.py` - PPO training pipeline with DB candle loader and model save to `models/ppo_nifty.zip`
-- [x] `tests/rl/test_trading_env.py` - synthetic-candle unit tests for reset/step/invalid action/date normalization
-- [x] `src/orchestrator/agent.py` - `MarketOrchestrator.run_cycle()` with news -> sentiment -> regime -> analogs and buy/sell/hold signal logic
-- [x] `tests/orchestrator/test_agent.py` - mocked unit tests for result shape, signal decisions, and empty-headline fallback
-- [x] `README.md` - redesigned with project narrative, architecture, setup, and usage guidance
-- [x] `src/feedback/tracker.py` - SQLite-backed prediction/outcome tracker with accuracy stats
-- [x] `tests/feedback/test_tracker.py` - unit tests for prediction recording, outcome resolution, and accuracy metrics
-- [x] `src/api/server.py` - added `/accuracy` and `/outcome` endpoints powered by feedback tracker
-- [x] `src/feedback/tracker.py` - hardened with `feedback_predictions` table, conflict-safe inserts, and missing-outcome guard
-- [x] `src/api/server.py` - moved feedback routes to `/api/feedback/accuracy` and `/api/feedback/outcome` with 404 on unknown timestamp
-- [x] Fixed Gemma 4 empty content bug on Ollama by bypassing openai client, setting `{"think": False}` in generation options, and extracting via a robust fallback chain in `src/reasoning/gemma_client.py`.
-- [x] Shortened regime classifier prompt to stay within token limits.
-- [x] `frontend/` — React + Vite + TypeScript dashboard with Tailwind CSS (4 panels: Signal, Accuracy, Analogs, Explanation)
-- [x] `frontend/README.md` — dashboard setup and usage guide
-- [x] Root `README.md` updated with Frontend section
-- [x] Hotfix: 3 agent runtime errors resolved
-  - `SectorRotationAgent`: replaced missing `get_kite` with correct `get_client`; wrapped `collect()` in try/except for graceful degradation
-  - `OptionsChainAgent`: robust warm-up headers, full try/except fallback with `available` flag, fixed max_pain comment
-  - `MarketBreadthAgent`: multi-endpoint fallback, Content-Type check, `isinstance` guard for string items, `available` flag
-  - `GlobalMarketAgent`: replaced per-ticker loop with batch `yf.download` + exponential backoff (3 attempts)
-- [x] L0: Gemini 7-key routing ✅ merged PR #31
-- [x] L1: Auto-Scheduler ✅ APScheduler every 5 min, built into server lifespan
-- [x] L2: Macro Signal Agents ✅ 9 agents, parallel execution
-- [x] L3: 15-min Intraday ⚠️ 80% — Issue #43 assigned to Jules
-  - `intraday_candles` table seeded from Kite (15-min OHLCV)
-  - `src/data/intraday_seeder.py` — incremental sync, runs on server startup
-  - `src/learning/intraday_resolver.py` — resolves predictions after 5 candles (75 min), sets `resolved=1` and `signal`
-  - `src/learning/weight_updater.py` — RL weight update every Sunday
-  - **Missing**: `find_intraday_analogs()` in `analog_finder.py` — Jules on Issue #43
-    - Must use `read_intraday_candles()` with 20-candle windows, 5-candle outcomes
-    - `AnalogAgent` needs fallback: intraday if ≥20 candles available, else daily
-- [x] L4: RL Weight Updater ✅ merged PR #41
-  - Per-agent accuracy tracked (7d + 30d windows)
-  - Weights update every Sunday at 00:00 IST (first run: Apr 19, 2026)
-  - Live weights loaded into `_weighted_fallback` on every cycle
-  - `/api/agents/stats`, `/api/weights/history`, `/api/weights/update` endpoints live
-  - 25 candles synced today, 17 predictions resolved with outcomes
-
----
-
-## In Progress
-- Issue #43 — Jules working on L3 completion (`find_intraday_analogs()`). PR incoming.
-- PR #42 — Copilot working on Live Dashboard wiring (React frontend → live backend). Maps to **L7** in corrected plan. Review carefully before merging — do NOT let it block L5 Paper Trading.
-
----
-
-## Blocked / Issues
-- `tests/api/test_server.py::test_candles_endpoint_returns_200` — pre-existing failure (candles table not initialised in test DB)
+- [x] Project scaffold (v2 architecture)
+- [x] `AGENTS.md` — full v2 vision and architecture
+- [x] `DECISIONS.md` — 11 ADRs documented
+- [x] `src/config/settings.py` — env loader
+- [x] `src/data/kite_client.py` — Kite Connect + yfinance fallback
+- [x] `src/data/db.py` — SQLite helpers (candles, intraday, news, predictions, agent weights)
+- [x] `src/data/kite_feed.py` — OHLCV fetcher with chunked date range seeding
+- [x] `src/data/news_fetcher.py` — NewsAPI + RSS ingestion, APScheduler job, `news_raw` table
+- [x] `src/data/intraday_seeder.py` — 15-min candle incremental sync, runs on server startup
+- [x] `src/sentiment/preprocessor.py` — headline cleaner
+- [x] `src/sentiment/scorer.py` — FinBERT scorer
+- [x] `src/reasoning/analog_finder.py` — `find_analogs()` (daily) + `find_intraday_analogs()` (15-min, 20-candle window, 5-candle outcome)
+- [x] `src/reasoning/regime_classifier.py` — Gemini-powered regime classifier
+- [x] `src/agents/analog_agent.py` — intraday/daily fallback routing (≥20 candles → intraday, else daily)
+- [x] `src/agents/aggregator.py` — master signal aggregator
+- [x] `src/orchestrator/agent.py` — `MarketOrchestrator.run_cycle()` — news → sentiment → regime → analogs → signal
+- [x] `src/learning/intraday_resolver.py` — resolves predictions after 5 candles (75 min), sets `resolved=1` + `signal`
+- [x] `src/learning/weight_updater.py` — RL weight update (Sunday 00:00 IST), normalize + clamp
+- [x] `src/learning/accuracy_calculator.py` — per-agent 7d + 30d accuracy windows
+- [x] `src/feedback/tracker.py` — prediction/outcome tracker, `feedback_predictions` table
+- [x] `src/api/server.py` — FastAPI + WebSocket + APScheduler lifespan + all endpoints
+- [x] `src/api/websocket_manager.py` — WebSocket connection manager
+- [x] `src/rl/trading_env.py` — Gymnasium `NiftyTradingEnv`
+- [x] `src/rl/trainer.py` — PPO training pipeline
+- [x] `src/backtest/engine.py` — Backtrader engine (SMA crossover baseline)
+- [x] `config/agent_weights.json` — baseline equal weights (DB overrides on every cycle)
+- [x] `frontend/` — React + Vite + TypeScript + Tailwind CSS dashboard
+  - SignalPanel (WebSocket primary, 30s REST fallback, WS/REST badge)
+  - AccuracyPanel (wired to `/api/feedback/accuracy`)
+  - AnalogPanel, ExplanationPanel
+  - AgentWeightsPanel (new — weight bars, 7d/30d accuracy, sorted by weight desc)
+  - `VITE_API_BASE_URL` env var — no hardcoded localhost
+- [x] `frontend/.env.example` — environment config template
+- [x] All agent runtime hotfixes (SectorRotation, OptionsChain, MarketBreadth, GlobalMarket)
+- [x] `scripts/seed_historical.py`, `scripts/verify_db.py`, `scripts/seed_intraday.py`
+- [x] Full test suite across all modules
 
 ---
 
@@ -133,43 +105,95 @@ Goal: Get real Nifty 50 OHLCV data flowing into the local database.
 
 ---
 
-## Task Tracker
-- [x] `task_007` - Feedback loop implemented
-- [x] `task_008` - RL weight updater
-- [ ] `task_010` - Gemma reasoning layer
-- [x] `task_011` - Analog agent integration
+## In Progress
+- **L5** — Jules working on `feature/paper-trading-engine`
+  - `src/paper_trading/engine.py` — `PaperTradingEngine` class
+  - `paper_trades` DB table
+  - Wired into `MarketOrchestrator.run_cycle()`
+  - `/api/paper/trades` + `/api/paper/stats` endpoints
+  - First live paper trade fires on next prediction cycle after merge
 
 ---
 
-## Ollama Setup Status
-- [x] Ollama installed on dev machine
-- [x] `gemma4:2b` pulled (~9.6 GB)
-- [ ] `gemma4:26b` pulled (~19 GB, optional, needs GPU)
-- [x] `ollama serve` running in background
+## Pending Layer Definitions
+
+### L6 — Signal Quality + Backtesting *(Codex — after L5)*
+- Run 3-month historical backtest on `feedback_predictions` where `resolved=1`
+- Compare RL-weighted accuracy vs equal-weight baseline
+- Metrics: win rate, Sharpe ratio, max drawdown, equity curve
+- Report: `reports/backtest_YYYY-MM-DD.html` (self-contained, no CDN)
+- Walk-forward validation: re-weight weekly, test next week
+- CLI: `python scripts/run_backtest.py --from 2026-01-01 --to 2026-04-15`
+- Endpoint: `GET /api/backtest/latest`
+
+### L7 — Live Prediction Chart Dashboard *(Copilot — after L6)*
+- Full candlestick chart: live Nifty 50 OHLCV + RITAM prediction zone overlay
+- Prediction moves 15 minutes ahead of market, continuously self-corrects
+- Confidence meter (based on analog similarity scores)
+- Pre-market prediction cycle at 9:00 AM using GIFT Nifty + global cues
+- 9 agent signal bars with live RL weights
+- Regime badge: `🔴 Crisis` / `🟡 Ranging` / `🟢 Trending Up`
+- Event overlay toggle (historical: rate hikes, elections, wars)
+- WebSocket real-time updates
+- Stack: TradingView Lightweight Charts or Recharts, Framer Motion
+- Color palette: `#0A0F1E` background, `#3B82F6` accents, green/red signals
+- PR #42 is groundwork (panel wiring) — this layer builds the chart itself
+
+### L8 — Sandbox: "What If" Time Machine *(Copilot + Vandan)*
+- Timeline roller: user picks any date (e.g., "Jan 2008", "Mar 1962")
+- Condition input: "What if RBI cuts rates by 1%" or "China attacked India"
+- Condition parser: NLP → structured event `{type, magnitude, date}`
+- Scenario engine: overrides live data with hypothetical, runs analog + regime + macro
+- Animated chart: replays predicted Nifty path frame by frame
+- Portfolio simulator: user enters holdings, sees predicted impact
+- Comparison mode: overlay 2008 crash vs current market
+- Collaborative: multiple users add conditions simultaneously
+- Export to PDF: scenario analysis download
+- Build scenario list from early Discord user feedback — don't build blindly
+
+### L9 — Landing Page + Waitlist + Invite-Only Deploy *(Vandan + Copilot)*
+- Landing page structure:
+  - Hero: "Predict the Market. Understand History." + animated Nifty chart
+  - Demo video: 60-second sandbox screen recording
+  - Waitlist: email + "What would you use this for?"
+  - Discord invite: curated early users
+- Discord channels: `#predictions` (auto-post daily signal), `#sandbox-demos`, `#feedback`
+- Deploy: Docker + `docker-compose up` (API + frontend + scheduler)
+- API → Fly.io, Frontend → Vercel
+- Migrate SQLite → PostgreSQL
+- Auth layer (invite-only token)
+- `/health` endpoint + Sentry/Logfire error tracking
+- Stack: Next.js 14 (App Router) + Tailwind + Framer Motion for landing page
+
+### L10 — Public Pricing + Launch *(Vandan)*
+- Stripe integration
+- Tiers: Free = delayed signals, Paid = live signals + sandbox access
+- API access tier: developers query predictions programmatically
+- Alert system: Telegram/WhatsApp notify on regime change or signal flip
+- Public launch
 
 ---
 
-## Branch Status
-| Branch | Status | PR |
-| --- | --- | --- |
-| `main` | Clean | - |
-| `feature/backtesting-engine` | `task_005` complete (backtesting engine) | pending |
-| `feature/tests-backtest-edge-cases` | `task_005.1` complete (backtest engine edge case tests) | pending |
-| `work` | `task_006` foundation (orchestrator agent scaffold + tests) | pending |
-| `fix/gemma4-ollama-empty-response` | `task` fix empty content bug from Ollama API | pending |
-| `feature/feedback-loop` | `task_007` complete (feedback loop to resolve predictions) | pending |
-| `feature/dashboard-v1` | React dashboard with 4 premium panels | pending |
-| `feature/gemini-dual-key-routing` | implemented Gemini dual key routing | pending |
+## Blocked / Issues
+- `tests/api/test_server.py::test_candles_endpoint_returns_200` — pre-existing failure (candles table not initialised in test DB, unrelated to main logic)
 
 ---
 
 ## Monthly Cost Tracker
 | Tool | Cost |
-| --- | --- |
+|---|---|
 | Kite Connect | Rs500 |
-<!-- | Claude Code (Pro) | Rs1,670 | -->
-| OpenAI Codex | Rs0 |
+| Gemini API (7 keys, free tier) | Rs0 |
 | Jules | Rs0 |
-| Gemma 4 (Ollama) | Rs0 |
-| Gemini API | Rs0 |
+| Copilot | Rs0 |
+| Codex | Rs0 |
+| Ollama / Gemma | Removed |
 | **Total** | **Rs500** |
+
+---
+
+## Branch Status
+| Branch | Status | PR |
+|---|---|---|
+| `main` | Clean | — |
+| `feature/paper-trading-engine` | L5 in progress (Jules) | pending |
