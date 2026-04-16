@@ -7,6 +7,7 @@ import type {
   PredictionData,
   AgentsStatsResponse,
   WeightHistoryEntry,
+  CandleData,
 } from './types';
 
 const API_BASE: string = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -192,6 +193,89 @@ export function useLivePrediction(fallbackIntervalMs = 30_000): {
   }, [startFallbackPolling, stopFallbackPolling]);
 
   return { data, loading, connected };
+}
+
+type IntradayCandleApi = {
+  timestamp_ist?: string;
+  timestamp?: string;
+  time?: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+type IntradayCandlesResponse = {
+  candles: IntradayCandleApi[];
+};
+
+function normalizeCandle(raw: IntradayCandleApi): CandleData | null {
+  const sourceTime =
+    typeof raw.time === 'number'
+      ? raw.time
+      : Date.parse(raw.timestamp_ist ?? raw.timestamp ?? '');
+
+  if (!Number.isFinite(sourceTime)) {
+    return null;
+  }
+
+  const unixSeconds = sourceTime > 1e12 ? Math.floor(sourceTime / 1000) : Math.floor(sourceTime);
+  return {
+    time: unixSeconds,
+    open: raw.open,
+    high: raw.high,
+    low: raw.low,
+    close: raw.close,
+    volume: raw.volume,
+  };
+}
+
+function mergeCandles(prev: CandleData[], next: CandleData[], limit: number): CandleData[] {
+  const byTime = new Map<number, CandleData>();
+  for (const candle of prev) byTime.set(candle.time, candle);
+  for (const candle of next) byTime.set(candle.time, candle);
+  return Array.from(byTime.values())
+    .sort((a, b) => a.time - b.time)
+    .slice(-limit);
+}
+
+export function useIntradayCandles(limit = 50): {
+  candles: CandleData[];
+  loading: boolean;
+  error: boolean;
+} {
+  const [candles, setCandles] = useState<CandleData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const poll = async () => {
+      const result = await fetchJSON<IntradayCandlesResponse>(`/api/intraday/candles?limit=${limit}`);
+      if (!mounted) return;
+      if (result?.candles) {
+        const normalized = result.candles
+          .map(normalizeCandle)
+          .filter((candle): candle is CandleData => candle !== null);
+        setCandles((prev) => mergeCandles(prev, normalized, limit));
+        setError(false);
+      } else {
+        setError(true);
+      }
+      setLoading(false);
+    };
+
+    poll();
+    const id = setInterval(poll, 60_000);
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
+  }, [limit]);
+
+  return { candles, loading, error };
 }
 
 /* ── Agent stats hook ── */
