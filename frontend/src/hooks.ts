@@ -11,6 +11,8 @@ import type {
 } from './types';
 
 const API_BASE: string = import.meta.env.VITE_API_BASE_URL ?? '';
+const CANDLE_POLL_INTERVAL_MS = 60_000;
+const MILLISECOND_TIMESTAMP_THRESHOLD = 1_000_000_000_000;
 
 /* ── Generic fetcher with error handling ── */
 async function fetchJSON<T>(url: string): Promise<T | null> {
@@ -220,7 +222,10 @@ function normalizeCandle(raw: IntradayCandleApi): CandleData | null {
     return null;
   }
 
-  const unixSeconds = sourceTime > 1e12 ? Math.floor(sourceTime / 1000) : Math.floor(sourceTime);
+  const unixSeconds =
+    sourceTime > MILLISECOND_TIMESTAMP_THRESHOLD
+      ? Math.floor(sourceTime / 1000)
+      : Math.floor(sourceTime);
   return {
     time: unixSeconds,
     open: raw.open,
@@ -268,7 +273,7 @@ export function useIntradayCandles(limit = 50): {
     };
 
     poll();
-    const id = setInterval(poll, 60_000);
+    const id = setInterval(poll, CANDLE_POLL_INTERVAL_MS);
     return () => {
       mounted = false;
       clearInterval(id);

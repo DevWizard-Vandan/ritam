@@ -13,6 +13,11 @@ import {
 import { useIntradayCandles, useLivePrediction } from '../hooks';
 import type { CandleData, PredictionData, PredictionZone } from '../types';
 
+const CHART_HEIGHT = 390;
+const CLOCK_UPDATE_INTERVAL_MS = 30_000;
+const HIGH_CONFIDENCE_THRESHOLD = 70;
+const MEDIUM_CONFIDENCE_THRESHOLD = 40;
+
 function toUtcTimestamp(value: number): UTCTimestamp {
   return value as UTCTimestamp;
 }
@@ -71,8 +76,8 @@ function isPreMarket(now: Date): boolean {
 }
 
 function confidenceClass(confidencePct: number): string {
-  if (confidencePct > 70) return 'bg-emerald-500';
-  if (confidencePct >= 40) return 'bg-yellow-400';
+  if (confidencePct > HIGH_CONFIDENCE_THRESHOLD) return 'bg-emerald-500';
+  if (confidencePct >= MEDIUM_CONFIDENCE_THRESHOLD) return 'bg-yellow-400';
   return 'bg-red-500';
 }
 
@@ -88,7 +93,7 @@ export default function PredictionChart() {
   const { data: prediction } = useLivePrediction(30_000);
 
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 30_000);
+    const id = setInterval(() => setNow(new Date()), CLOCK_UPDATE_INTERVAL_MS);
     return () => clearInterval(id);
   }, []);
 
@@ -107,7 +112,7 @@ export default function PredictionChart() {
 
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
-      height: 390,
+      height: CHART_HEIGHT,
       layout: {
         background: { color: '#0A0F1E' },
         textColor: '#D6E0F0',
@@ -246,7 +251,7 @@ export default function PredictionChart() {
         </p>
       )}
 
-      <div ref={containerRef} className="w-full h-[390px] rounded-lg overflow-hidden" />
+      <div ref={containerRef} className="w-full rounded-lg overflow-hidden" style={{ height: `${CHART_HEIGHT}px` }} />
 
       <div className="mt-3">
         <div className="flex items-center justify-between text-xs text-ash mb-1">
