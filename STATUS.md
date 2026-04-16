@@ -1,5 +1,5 @@
 # RITAM - Project Status
-# Last Updated: April 16, 2026 — L6 Signal Quality + Backtesting complete
+# Last Updated: April 16, 2026 — L7 Live Prediction Chart Dashboard complete
 # Updating Agent: Vandan
 
 ---
@@ -59,6 +59,7 @@ The system gets smarter every week via RL weight updates and grows its analog me
   - AccuracyPanel (wired to `/api/feedback/accuracy`)
   - AnalogPanel, ExplanationPanel
   - AgentWeightsPanel (weight bars, 7d/30d accuracy, sorted by weight desc)
+  - PredictionChart (lightweight-charts candlesticks, prediction zone, confidence meter, live regime badge)
   - `VITE_API_BASE_URL` env var — no hardcoded localhost
 - [x] `frontend/.env.example` — environment config template
 - [x] All agent runtime hotfixes (SectorRotation, OptionsChain, MarketBreadth, GlobalMarket)
@@ -79,7 +80,7 @@ The system gets smarter every week via RL weight updates and grows its analog me
 | L4 | RL Weight Updater | ✅ Done | PR #41 |
 | L5 | Paper Trading Engine | ✅ Done | PR #45 |
 | L6 | Signal Quality + Backtesting | ✅ Done | Codex |
-| L7 | Live Prediction Chart Dashboard | ⏳ Pending | — |
+| L7 | Live Prediction Chart Dashboard | ✅ Done | Copilot |
 | L8 | Sandbox — "What If" Time Machine | ⏳ Pending | — |
 | L9 | Landing Page + Waitlist + Invite Deploy | ⏳ Pending | — |
 | L10 | Public Pricing + Launch | ⏳ Pending | — |
@@ -102,7 +103,7 @@ The system gets smarter every week via RL weight updates and grows its analog me
 - CLI: `python scripts/run_backtest.py --from 2026-01-01 --to 2026-04-16`
 - Endpoint: `GET /api/backtest/latest`
 
-### L7 — Live Prediction Chart Dashboard *(Copilot — after L6)*
+### L7 — Live Prediction Chart Dashboard *(Copilot — completed Apr 2026)*
 - Full candlestick chart: live Nifty 50 OHLCV + RITAM prediction zone overlay
 - Prediction moves 15 minutes ahead of market, continuously self-corrects
 - Confidence meter (based on analog similarity scores)

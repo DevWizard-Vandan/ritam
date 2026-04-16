@@ -79,3 +79,19 @@ export interface WeightHistoryEntry {
   accuracy_7d: number;
   recorded_at: string;
 }
+
+export interface CandleData {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface PredictionZone {
+  direction: 'BUY' | 'SELL' | 'HOLD';
+  target_time: number;
+  confidence: number;
+  regime: string;
+}

@@ -4,6 +4,7 @@ import AccuracyPanel from './components/AccuracyPanel';
 import AnalogPanel from './components/AnalogPanel';
 import ExplanationPanel from './components/ExplanationPanel';
 import AgentWeightsPanel from './components/AgentWeightsPanel';
+import PredictionChart from './components/PredictionChart';
 
 function useCurrentTime() {
   const [time, setTime] = useState(new Date());
@@ -85,6 +86,11 @@ export default function App() {
       {/* ── Main Dashboard Grid ── */}
       <main className="flex-1 max-w-[1600px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 auto-rows-min">
+          {/* Prediction Chart — full-width top row */}
+          <div className="lg:col-span-12 lg:row-span-1">
+            <PredictionChart />
+          </div>
+
           {/* Signal Panel — top center, spans 7 cols on large screens */}
           <div className="lg:col-span-7 lg:row-span-1">
             <SignalPanel />
