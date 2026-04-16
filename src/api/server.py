@@ -361,6 +361,18 @@ def trigger_weight_update():
     return run_weight_update()
 
 
+
+@app.get("/api/paper/trades")
+def get_paper_trades(limit: int = 50):
+    from src.data.db import read_paper_trades
+    return read_paper_trades(limit=limit)
+
+@app.get("/api/paper/stats")
+def get_paper_stats():
+    from src.paper_trading.engine import PaperTradingEngine
+    engine = PaperTradingEngine()
+    return engine.get_stats()
+
 @app.websocket("/ws/predictions")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)

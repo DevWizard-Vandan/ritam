@@ -79,7 +79,9 @@ def test_resolve_outcome_success_returns_payload(client, monkeypatch):
 
 def test_get_learning_weights_returns_200(client, monkeypatch):
     from src.learning import weight_updater as wu
+    import src.api.server as srv
     monkeypatch.setattr(wu, "run_weight_update", lambda: {"updated_at": "2026-04-15T00:00:00Z", "agents": [], "new_weights": {}})
+    monkeypatch.setattr("src.data.db.get_agent_accuracy_stats", lambda: [])
     resp = client.get("/api/agents/stats")
     assert resp.status_code == 200
 

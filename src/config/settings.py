@@ -8,6 +8,8 @@ except ModuleNotFoundError:  # pragma: no cover - environment fallback
 load_dotenv()
 
 class Settings:
+    PAPER_CAPITAL: float = 100000.0
+    PAPER_LOT_SIZE: int = 50
     KITE_API_KEY: str = os.getenv("KITE_API_KEY", "")
     KITE_API_SECRET: str = os.getenv("KITE_API_SECRET", "")
     KITE_ACCESS_TOKEN: str = os.getenv("KITE_ACCESS_TOKEN", "")

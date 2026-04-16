@@ -1,3 +1,7 @@
+import src.config.settings
+from src.config.settings import settings
+settings.USE_INTRADAY = False
+
 from unittest.mock import patch
 
 from src.orchestrator.agent import MarketOrchestrator, OrchestratorResult

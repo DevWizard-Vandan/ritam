@@ -65,22 +65,43 @@ The system gets smarter every week via RL weight updates and grows its analog me
 
 ---
 
-## Layer Status
+## Up Next
 
-| Layer | Name | Status | PR |
-|---|---|---|---|
-| Core | 9 Agents + Orchestrator + Gemini Brain | ✅ Done | — |
-| L0 | Gemini 7-Key Rotation | ✅ Done | PR #31 |
-| L1 | Auto-Scheduler (5-min cycles) | ✅ Done | — |
-| L2 | 9 Macro Agents Parallel | ✅ Done | — |
-| L3 | 15-min Intraday Analog Finder | ✅ Done | PR #44 |
-| L4 | RL Weight Updater | ✅ Done | PR #41 |
-| L5 | Paper Trading Engine | 🔄 In Progress | Jules working |
-| L6 | Signal Quality + Backtesting | ⏳ Next | Codex — after L5 |
-| L7 | Live Prediction Chart Dashboard | ⏳ Pending | Groundwork: PR #42 |
-| L8 | Sandbox — "What If" Time Machine | ⏳ Pending | — |
-| L9 | Landing Page + Waitlist + Invite Deploy | ⏳ Pending | — |
-| L10 | Public Pricing + Launch | ⏳ Pending | — |
+### Pending Layers (Corrected Definitions — Apr 15, 2026)
+
+- [x] **L5: Paper Trading Engine**
+    - Wire BUY/SELL/HOLD signal → Zerodha paper trading (no real money)
+    - Track P&L, Sharpe ratio, win-rate separately from prediction accuracy
+    - Builds a verifiable live track record
+    - Use Kite's paper trading mode or simulate with a local engine tracking virtual positions
+    - Assign to Jules or Copilot after Issue #43 PR merges
+
+- [ ] **L6: Signal Quality + Backtesting**
+    - Run 3-month historical backtest on stored predictions + outcomes
+    - Compare RL-weighted agent accuracy vs equal-weight baseline
+    - Output: win rate, Sharpe ratio, drawdown, equity curve
+    - Report saved to `reports/backtest_YYYY-MM-DD.html`
+    - Walk-forward validation (re-weight weekly, test next week)
+
+- [ ] **L7: Live Prediction Chart Dashboard**
+    - Full React dashboard: live Nifty 50 candlestick + RITAM prediction zone overlay
+    - 9 agent signal bars with live weights, accuracy tracker
+    - WebSocket real-time updates
+    - Deploy locally at `localhost:5173`. Stretch: Vercel deploy
+    - PR #42 is a head start on this layer
+
+- [ ] **L8: Invite-Only Deploy**
+    - Docker + `docker-compose up` starts API + frontend + scheduler
+    - Deploy API to Fly.io, frontend to Vercel
+    - Migrate SQLite → PostgreSQL
+    - Auth layer (invite-only)
+    - `/health` endpoint with DB ping + last cycle timestamp
+    - Sentry/Logfire error tracking
+
+- [ ] **L9: Public + Pricing**
+    - Stripe integration
+    - User tiers: free = delayed signals, paid = live
+    - Public launch
 
 ---
 
