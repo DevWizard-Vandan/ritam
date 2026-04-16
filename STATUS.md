@@ -1,5 +1,5 @@
 # RITAM - Project Status
-# Last Updated: April 15, 2026 — Full roadmap corrected, L3+L4+L7 done, L5 in progress
+# Last Updated: April 16, 2026 — L5 Paper Trading Engine done, next: L6 Backtesting
 # Updating Agent: Vandan
 
 ---
@@ -29,9 +29,9 @@ The system gets smarter every week via RL weight updates and grows its analog me
 - [x] Project scaffold (v2 architecture)
 - [x] `AGENTS.md` — full v2 vision and architecture
 - [x] `DECISIONS.md` — 11 ADRs documented
-- [x] `src/config/settings.py` — env loader
+- [x] `src/config/settings.py` — env loader + `PAPER_CAPITAL`, `PAPER_LOT_SIZE`
 - [x] `src/data/kite_client.py` — Kite Connect + yfinance fallback
-- [x] `src/data/db.py` — SQLite helpers (candles, intraday, news, predictions, agent weights)
+- [x] `src/data/db.py` — SQLite helpers (candles, intraday, news, predictions, agent weights, paper trades)
 - [x] `src/data/kite_feed.py` — OHLCV fetcher with chunked date range seeding
 - [x] `src/data/news_fetcher.py` — NewsAPI + RSS ingestion, APScheduler job, `news_raw` table
 - [x] `src/data/intraday_seeder.py` — 15-min candle incremental sync, runs on server startup
@@ -41,12 +41,14 @@ The system gets smarter every week via RL weight updates and grows its analog me
 - [x] `src/reasoning/regime_classifier.py` — Gemini-powered regime classifier
 - [x] `src/agents/analog_agent.py` — intraday/daily fallback routing (≥20 candles → intraday, else daily)
 - [x] `src/agents/aggregator.py` — master signal aggregator
-- [x] `src/orchestrator/agent.py` — `MarketOrchestrator.run_cycle()` — news → sentiment → regime → analogs → signal
+- [x] `src/orchestrator/agent.py` — `MarketOrchestrator.run_cycle()` wired to PaperTradingEngine
 - [x] `src/learning/intraday_resolver.py` — resolves predictions after 5 candles (75 min), sets `resolved=1` + `signal`
 - [x] `src/learning/weight_updater.py` — RL weight update (Sunday 00:00 IST), normalize + clamp
 - [x] `src/learning/accuracy_calculator.py` — per-agent 7d + 30d accuracy windows
 - [x] `src/feedback/tracker.py` — prediction/outcome tracker, `feedback_predictions` table
-- [x] `src/api/server.py` — FastAPI + WebSocket + APScheduler lifespan + all endpoints
+- [x] `src/paper_trading/engine.py` — `PaperTradingEngine` class (open/close/get_stats), single position, no pyramiding
+- [x] `paper_trades` DB table — signal, entry/exit price+time, P&L, outcome, Sharpe contribution
+- [x] `src/api/server.py` — FastAPI + WebSocket + APScheduler + all endpoints incl. `/api/paper/trades` + `/api/paper/stats`
 - [x] `src/api/websocket_manager.py` — WebSocket connection manager
 - [x] `src/rl/trading_env.py` — Gymnasium `NiftyTradingEnv`
 - [x] `src/rl/trainer.py` — PPO training pipeline
@@ -56,74 +58,48 @@ The system gets smarter every week via RL weight updates and grows its analog me
   - SignalPanel (WebSocket primary, 30s REST fallback, WS/REST badge)
   - AccuracyPanel (wired to `/api/feedback/accuracy`)
   - AnalogPanel, ExplanationPanel
-  - AgentWeightsPanel (new — weight bars, 7d/30d accuracy, sorted by weight desc)
+  - AgentWeightsPanel (weight bars, 7d/30d accuracy, sorted by weight desc)
   - `VITE_API_BASE_URL` env var — no hardcoded localhost
 - [x] `frontend/.env.example` — environment config template
 - [x] All agent runtime hotfixes (SectorRotation, OptionsChain, MarketBreadth, GlobalMarket)
 - [x] `scripts/seed_historical.py`, `scripts/verify_db.py`, `scripts/seed_intraday.py`
-- [x] Full test suite across all modules
+- [x] Full test suite across all modules incl. `tests/paper_trading/test_engine.py`
 
 ---
 
-## Up Next
+## Layer Status
 
-### Pending Layers (Corrected Definitions — Apr 15, 2026)
-
-- [x] **L5: Paper Trading Engine**
-    - Wire BUY/SELL/HOLD signal → Zerodha paper trading (no real money)
-    - Track P&L, Sharpe ratio, win-rate separately from prediction accuracy
-    - Builds a verifiable live track record
-    - Use Kite's paper trading mode or simulate with a local engine tracking virtual positions
-    - Assign to Jules or Copilot after Issue #43 PR merges
-
-- [ ] **L6: Signal Quality + Backtesting**
-    - Run 3-month historical backtest on stored predictions + outcomes
-    - Compare RL-weighted agent accuracy vs equal-weight baseline
-    - Output: win rate, Sharpe ratio, drawdown, equity curve
-    - Report saved to `reports/backtest_YYYY-MM-DD.html`
-    - Walk-forward validation (re-weight weekly, test next week)
-
-- [ ] **L7: Live Prediction Chart Dashboard**
-    - Full React dashboard: live Nifty 50 candlestick + RITAM prediction zone overlay
-    - 9 agent signal bars with live weights, accuracy tracker
-    - WebSocket real-time updates
-    - Deploy locally at `localhost:5173`. Stretch: Vercel deploy
-    - PR #42 is a head start on this layer
-
-- [ ] **L8: Invite-Only Deploy**
-    - Docker + `docker-compose up` starts API + frontend + scheduler
-    - Deploy API to Fly.io, frontend to Vercel
-    - Migrate SQLite → PostgreSQL
-    - Auth layer (invite-only)
-    - `/health` endpoint with DB ping + last cycle timestamp
-    - Sentry/Logfire error tracking
-
-- [ ] **L9: Public + Pricing**
-    - Stripe integration
-    - User tiers: free = delayed signals, paid = live
-    - Public launch
+| Layer | Name | Status | PR |
+|---|---|---|---|
+| Core | 9 Agents + Orchestrator + Gemini Brain | ✅ Done | — |
+| L0 | Gemini 7-Key Rotation | ✅ Done | PR #31 |
+| L1 | Auto-Scheduler (5-min cycles) | ✅ Done | — |
+| L2 | 9 Macro Agents Parallel | ✅ Done | — |
+| L3 | 15-min Intraday Analog Finder | ✅ Done | PR #44 |
+| L4 | RL Weight Updater | ✅ Done | PR #41 |
+| L5 | Paper Trading Engine | ✅ Done | PR #45 |
+| L6 | Signal Quality + Backtesting | 🔄 Next | Codex |
+| L7 | Live Prediction Chart Dashboard | ⏳ Pending | — |
+| L8 | Sandbox — "What If" Time Machine | ⏳ Pending | — |
+| L9 | Landing Page + Waitlist + Invite Deploy | ⏳ Pending | — |
+| L10 | Public Pricing + Launch | ⏳ Pending | — |
 
 ---
 
 ## In Progress
-- **L5** — Jules working on `feature/paper-trading-engine`
-  - `src/paper_trading/engine.py` — `PaperTradingEngine` class
-  - `paper_trades` DB table
-  - Wired into `MarketOrchestrator.run_cycle()`
-  - `/api/paper/trades` + `/api/paper/stats` endpoints
-  - First live paper trade fires on next prediction cycle after merge
+- Nothing currently. Ready to assign L6 to Codex.
 
 ---
 
 ## Pending Layer Definitions
 
-### L6 — Signal Quality + Backtesting *(Codex — after L5)*
+### L6 — Signal Quality + Backtesting *(Codex)*
 - Run 3-month historical backtest on `feedback_predictions` where `resolved=1`
 - Compare RL-weighted accuracy vs equal-weight baseline
 - Metrics: win rate, Sharpe ratio, max drawdown, equity curve
 - Report: `reports/backtest_YYYY-MM-DD.html` (self-contained, no CDN)
 - Walk-forward validation: re-weight weekly, test next week
-- CLI: `python scripts/run_backtest.py --from 2026-01-01 --to 2026-04-15`
+- CLI: `python scripts/run_backtest.py --from 2026-01-01 --to 2026-04-16`
 - Endpoint: `GET /api/backtest/latest`
 
 ### L7 — Live Prediction Chart Dashboard *(Copilot — after L6)*
@@ -196,4 +172,3 @@ The system gets smarter every week via RL weight updates and grows its analog me
 | Branch | Status | PR |
 |---|---|---|
 | `main` | Clean | — |
-| `feature/paper-trading-engine` | L5 in progress (Jules) | pending |
