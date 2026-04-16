@@ -8,6 +8,7 @@ import asyncio
 import json
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +23,7 @@ from src.feedback.loop import FeedbackLoop
 from loguru import logger
 from src.reasoning.analog_finder import AnalogFinder
 import datetime as dt
+from src.backtest.signal_backtest import SignalBacktester
 
 scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
 scheduler_job_status = {}
@@ -372,6 +374,32 @@ def get_paper_stats():
     from src.paper_trading.engine import PaperTradingEngine
     engine = PaperTradingEngine()
     return engine.get_stats()
+
+
+@app.get("/api/backtest/latest")
+def get_latest_backtest():
+    reports_dir = Path("reports")
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    html_reports = sorted(reports_dir.glob("backtest_*.html"), key=lambda p: p.stat().st_mtime)
+
+    if html_reports:
+        latest = html_reports[-1]
+        content = latest.read_text(encoding="utf-8")
+        start_tag = '<script id="backtest-result" type="application/json">'
+        end_tag = "</script>"
+        start_idx = content.find(start_tag)
+        if start_idx != -1:
+            start_idx += len(start_tag)
+            end_idx = content.find(end_tag, start_idx)
+            if end_idx != -1:
+                payload = content[start_idx:end_idx].strip()
+                return json.loads(payload)
+
+    now = datetime.utcnow()
+    from_date = (now - dt.timedelta(days=90)).date().isoformat()
+    to_date = now.date().isoformat()
+    result = SignalBacktester().run(from_date=from_date, to_date=to_date, walk_forward=False)
+    return SignalBacktester.to_dict(result)
 
 @app.websocket("/ws/predictions")
 async def websocket_endpoint(websocket: WebSocket):

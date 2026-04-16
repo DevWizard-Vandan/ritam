@@ -1,5 +1,5 @@
 # RITAM - Project Status
-# Last Updated: April 16, 2026 — L5 Paper Trading Engine done, next: L6 Backtesting
+# Last Updated: April 16, 2026 — L6 Signal Quality + Backtesting complete
 # Updating Agent: Vandan
 
 ---
@@ -78,7 +78,7 @@ The system gets smarter every week via RL weight updates and grows its analog me
 | L3 | 15-min Intraday Analog Finder | ✅ Done | PR #44 |
 | L4 | RL Weight Updater | ✅ Done | PR #41 |
 | L5 | Paper Trading Engine | ✅ Done | PR #45 |
-| L6 | Signal Quality + Backtesting | 🔄 Next | Codex |
+| L6 | Signal Quality + Backtesting | ✅ Done | Codex |
 | L7 | Live Prediction Chart Dashboard | ⏳ Pending | — |
 | L8 | Sandbox — "What If" Time Machine | ⏳ Pending | — |
 | L9 | Landing Page + Waitlist + Invite Deploy | ⏳ Pending | — |
@@ -87,7 +87,7 @@ The system gets smarter every week via RL weight updates and grows its analog me
 ---
 
 ## In Progress
-- Nothing currently. Ready to assign L6 to Codex.
+- Nothing currently. L6 completed and validated.
 
 ---
 
