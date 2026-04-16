@@ -215,14 +215,16 @@ export default function PredictionChart() {
     const zoneSeries = zoneSeriesRef.current;
     if (!zoneSeries || !lastCandle || !predictionZone) return;
 
-    const movePct = Math.abs(prediction?.predicted_move_pct ?? 0);
+    const movePct = prediction?.predicted_move_pct ?? 0;
     const direction = predictionZone.direction;
     const targetPrice =
-      direction === 'BUY'
-        ? lastCandle.close * (1 + movePct / 100)
-        : direction === 'SELL'
-          ? lastCandle.close * (1 - movePct / 100)
-          : lastCandle.close;
+      direction === 'HOLD'
+        ? lastCandle.close
+        : movePct !== 0
+          ? lastCandle.close * (1 + movePct / 100)
+          : direction === 'BUY'
+            ? lastCandle.close * 1.001
+            : lastCandle.close * 0.999;
 
     const color = direction === 'BUY' ? '#22C55E' : direction === 'SELL' ? '#EF4444' : '#94A3B8';
     zoneSeries.applyOptions({ color, lineStyle: LineStyle.Dashed });

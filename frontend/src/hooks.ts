@@ -35,7 +35,9 @@ function usePolling<T>(
   const [error, setError] = useState(false);
 
   const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
+  useEffect(() => {
+    fetcherRef.current = fetcher;
+  }, [fetcher]);
 
   useEffect(() => {
     let mounted = true;
