@@ -267,13 +267,14 @@ def init_db():
 def write_candles(symbol: str, candles: list[dict]):
     """Insert OHLCV candles, ignoring duplicates."""
     with get_connection() as conn:
-        for record in [{"symbol": symbol, **c} for c in candles]:
+        records = [{"symbol": symbol, **c} for c in candles]
+        for record in records:
             insert_or_ignore(
                 conn,
-                """
+                f"""
                 INSERT OR IGNORE INTO candles
                 (symbol, timestamp_ist, open, high, low, close, volume)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})
                 """,
                 (
                     record["symbol"],
@@ -295,13 +296,14 @@ def upsert_intraday_candles(symbol: str, candles: list[dict]) -> int:
     """
     with get_connection() as conn:
         inserted_rows = 0
-        for record in [{"symbol": symbol, **c} for c in candles]:
+        records = [{"symbol": symbol, **c} for c in candles]
+        for record in records:
             cursor = insert_or_ignore(
                 conn,
-                """
+                f"""
                 INSERT OR IGNORE INTO intraday_candles
                 (symbol, timestamp_ist, open, high, low, close, volume)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})
                 """,
                 (
                     record["symbol"],
@@ -313,7 +315,8 @@ def upsert_intraday_candles(symbol: str, candles: list[dict]) -> int:
                     record["volume"],
                 ),
             )
-            inserted_rows += max(cursor.rowcount, 0)
+            if cursor.rowcount > 0:
+                inserted_rows += cursor.rowcount
         conn.commit()
         return inserted_rows
 
@@ -422,10 +425,10 @@ def write_news_raw(records: list[dict]):
         for record in records:
             insert_or_ignore(
                 conn,
-                """
+                f"""
                 INSERT OR IGNORE INTO news_raw
                 (source, headline, url, published_at, fetched_at)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})
                 """,
                 (
                     record["source"],
@@ -440,9 +443,9 @@ def write_news_raw(records: list[dict]):
 def log_agent_signals(cycle_id: str, signals: list) -> None:
     """Log a batch of agent signals to the database."""
     with get_connection() as conn:
-        conn.executemany("""
+        conn.executemany(f"""
             INSERT INTO agent_signal_log (cycle_id, agent_name, signal, confidence, reasoning)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})
         """, [(cycle_id, s.agent_name, s.signal, s.confidence, s.reasoning) for s in signals])
         conn.commit()
 
