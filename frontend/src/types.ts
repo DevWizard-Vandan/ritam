@@ -95,3 +95,21 @@ export interface PredictionZone {
   confidence: number;
   regime: string;
 }
+
+export interface SandboxRequest {
+  condition?: string;
+  date?: string;
+  candles_ahead?: number;
+}
+
+export interface ScenarioResult {
+  date: string;
+  condition: string | null;
+  data_source: 'db' | 'yfinance' | 'gemini_pure';
+  historical_candles: CandleData[];
+  projected_candles: CandleData[];
+  condition_parsed: Record<string, unknown> | null;
+  regime: string;
+  narrative: string;
+  confidence: number;
+}
