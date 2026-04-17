@@ -30,7 +30,7 @@ def test_agent_base_gemini_call_success(mock_configure, mock_model_class):
     mock_model.generate_content.return_value = MagicMock(text="response text")
     mock_model_class.return_value = mock_model
 
-    with patch("src.config.settings.settings.GEMINI_API_KEY_7", "key7"):
+    with patch("src.config.settings.GEMINI_API_KEY_7", "key7"):
         result = agent._gemini_call("prompt", "model")
 
     assert result == "response text"
@@ -52,7 +52,7 @@ def test_agent_base_gemini_call_fallback(mock_configure, mock_model_class):
     mock_model.generate_content.side_effect = generate_content_side_effect
     mock_model_class.return_value = mock_model
 
-    with patch("src.config.settings.settings.GEMINI_API_KEY_7", "key7"):
+    with patch("src.config.settings.GEMINI_API_KEY_7", "key7"):
         result = agent._gemini_call("prompt", "model")
 
     assert result == "fallback text"
@@ -68,7 +68,7 @@ def test_agent_base_gemini_call_all_fail(mock_configure, mock_model_class):
     mock_model.generate_content.side_effect = Exception("Failed")
     mock_model_class.return_value = mock_model
 
-    with patch("src.config.settings.settings.GEMINI_API_KEY_7", "key7"):
+    with patch("src.config.settings.GEMINI_API_KEY_7", "key7"):
         result = agent._gemini_call("prompt", "model")
 
     assert result == ""

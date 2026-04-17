@@ -30,7 +30,7 @@ def test_gemini_call_429_retry_success(mock_sleep, mock_configure, mock_model_cl
     mock_model.generate_content.side_effect = generate_content_side_effect
     mock_model_class.return_value = mock_model
 
-    with patch("src.config.settings.settings.GEMINI_API_KEY_7", "key7"):
+    with patch("src.config.settings.GEMINI_API_KEY_7", "key7"):
         result = agent._gemini_call("prompt", "model")
 
     assert result == "retried successfully"
@@ -54,7 +54,7 @@ def test_gemini_call_429_exhausted(mock_sleep, mock_configure, mock_model_class)
     mock_model.generate_content.side_effect = generate_content_side_effect
     mock_model_class.return_value = mock_model
 
-    with patch("src.config.settings.settings.GEMINI_API_KEY_7", "key7"):
+    with patch("src.config.settings.GEMINI_API_KEY_7", "key7"):
         result = agent._gemini_call("prompt", "model")
 
     assert result == ""
@@ -79,7 +79,7 @@ def test_gemini_call_success_on_key7_after_key1_fails(mock_sleep, mock_configure
     mock_model.generate_content.side_effect = generate_content_side_effect
     mock_model_class.return_value = mock_model
 
-    with patch("src.config.settings.settings.GEMINI_API_KEY_7", "key7"):
+    with patch("src.config.settings.GEMINI_API_KEY_7", "key7"):
         result = agent._gemini_call("prompt", "model")
 
     assert result == "key7 success"
