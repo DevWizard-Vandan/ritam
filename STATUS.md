@@ -68,6 +68,7 @@ The system gets smarter every week via RL weight updates and grows its analog me
 - [x] All agent runtime hotfixes (SectorRotation, OptionsChain, MarketBreadth, GlobalMarket)
 - [x] `scripts/seed_historical.py`, `scripts/verify_db.py`, `scripts/seed_intraday.py`
 - [x] Full test suite across all modules incl. `tests/paper_trading/test_engine.py`
+- [x] PostgreSQL compatibility hotfixes — startup `init_db()` in API lifespan, cross-DB insert-ignore handling, `news_raw` partial dedup indexes, and positional `executemany` args for DB wrapper compatibility
 
 ---
 
@@ -156,6 +157,7 @@ The system gets smarter every week via RL weight updates and grows its analog me
 
 ## Blocked / Issues
 - `tests/api/test_server.py::test_candles_endpoint_returns_200` — pre-existing failure (candles table not initialised in test DB, unrelated to main logic)
+- `python -m pytest tests/` currently fails during pytest startup due to warning filter import error: `ModuleNotFoundError: No module named 'pyparsing.warnings'` (environment/config issue, occurs before test collection)
 
 ---
 
