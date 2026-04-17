@@ -195,8 +195,47 @@ class OutcomePayload(BaseModel):
     timestamp: str
     actual_return_pct: float
 
+class SandboxRunPayload(BaseModel):
+    condition: str | None = None
+    date: str | None = None
+    candles_ahead: int = 20
 
 import src.orchestrator.agent
+from src.sandbox.scenario_engine import ScenarioEngine
+from src.data.db import insert_sandbox_run, read_sandbox_runs
+import dataclasses
+import json
+
+@app.post("/api/sandbox/run")
+def run_sandbox(payload: SandboxRunPayload):
+    if payload.condition is None and payload.date is None:
+        raise HTTPException(status_code=400, detail="At least one of condition or date must be provided")
+
+    engine = ScenarioEngine()
+    try:
+        result = engine.run(
+            condition=payload.condition,
+            date=payload.date,
+            candles_ahead=payload.candles_ahead
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    insert_sandbox_run(
+        condition=result.condition,
+        date=result.date,
+        data_source=result.data_source,
+        regime=result.regime,
+        narrative=result.narrative,
+        confidence=result.confidence,
+        result_json=json.dumps(dataclasses.asdict(result))
+    )
+    return dataclasses.asdict(result)
+
+@app.get("/api/sandbox/history")
+def get_sandbox_history():
+    runs = read_sandbox_runs(limit=10)
+    return {"runs": runs}
 
 @app.get("/api/scheduler/status")
 def get_scheduler_status():
