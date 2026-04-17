@@ -111,7 +111,7 @@ def resolve_intraday_outcomes() -> int:
                 pass # ignore if feedback_predictions not used
 
             conn.execute(
-                "UPDATE predictions SET resolved = 1, signal = ? WHERE id = ?",
+                    "UPDATE predictions SET resolved = 1, predicted_direction = ? WHERE id = ?",
                 (signal_str, pred_id)
             )
             resolved_count += 1

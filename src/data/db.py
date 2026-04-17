@@ -86,6 +86,11 @@ def init_db():
         except sqlite3.OperationalError:
             pass # Column likely already exists
 
+        try:
+            conn.execute("ALTER TABLE predictions ADD COLUMN resolved INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS prediction_errors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -144,6 +149,19 @@ def init_db():
                 pnl REAL,
                 outcome TEXT,
                 sharpe_contribution REAL,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS sandbox_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                condition TEXT,
+                date TEXT,
+                data_source TEXT,
+                regime TEXT,
+                narrative TEXT,
+                confidence REAL,
+                result_json TEXT,
                 created_at TEXT DEFAULT (datetime('now'))
             )
         ''')
@@ -394,6 +412,39 @@ def read_paper_trades(limit: int = 100) -> list[dict]:
         for r in rows
     ]
 
+
+
+def insert_sandbox_run(
+    condition: str | None,
+    date: str | None,
+    data_source: str,
+    regime: str,
+    narrative: str,
+    confidence: float,
+    result_json: str
+) -> int:
+    with get_connection() as conn:
+        cursor = conn.execute("""
+            INSERT INTO sandbox_runs (condition, date, data_source, regime, narrative, confidence, result_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (condition, date, data_source, regime, narrative, confidence, result_json))
+        conn.commit()
+        return cursor.lastrowid
+
+def read_sandbox_runs(limit: int = 10) -> list[dict]:
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT id, condition, date, data_source, regime, narrative, confidence, result_json, created_at
+            FROM sandbox_runs ORDER BY id DESC LIMIT ?
+        """, (limit,)).fetchall()
+    return [
+        {
+            "id": r[0], "condition": r[1], "date": r[2], "data_source": r[3],
+            "regime": r[4], "narrative": r[5], "confidence": r[6],
+            "result_json": r[7], "created_at": r[8]
+        }
+        for r in rows
+    ]
 
 def get_paper_trade_stats() -> dict:
     """Get paper trading statistics."""
