@@ -57,12 +57,24 @@ export default function SandboxChart({ result }: SandboxChartProps) {
   const historicalSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const projectedSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const boundarySeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const [showNarrativeOverlay, setShowNarrativeOverlay] = useState(false);
+  const [completedScenarioKey, setCompletedScenarioKey] = useState<string | null>(null);
 
   const projectedColor = useMemo(
     () => getProjectedColor(result?.regime ?? 'buy'),
     [result?.regime],
   );
+
+
+  const scenarioKey = useMemo(() => {
+    if (!result) return null;
+    return [
+      result.date,
+      result.condition ?? '',
+      result.regime,
+      String(result.projected_candles.length),
+      result.narrative,
+    ].join('|');
+  }, [result]);
 
   useEffect(() => {
     if (!containerRef.current || chartRef.current) return;
@@ -165,7 +177,6 @@ export default function SandboxChart({ result }: SandboxChartProps) {
 
     if (!historicalSeries || !projectedSeries || !boundarySeries) return;
 
-    setShowNarrativeOverlay(false);
     projectedSeries.applyOptions({
       upColor: projectedColor,
       downColor: projectedColor,
@@ -213,15 +224,15 @@ export default function SandboxChart({ result }: SandboxChartProps) {
               animatedData.push(toChartCandle(candle));
               projectedSeries.setData(animatedData);
 
-              if (index === result.projected_candles.length - 1) {
-                setShowNarrativeOverlay(true);
+              if (index === result.projected_candles.length - 1 && scenarioKey) {
+                setCompletedScenarioKey(scenarioKey);
               }
             }, index * CANDLE_STEP_DELAY_MS),
           );
         });
 
-        if (result.projected_candles.length === 0) {
-          setShowNarrativeOverlay(true);
+        if (result.projected_candles.length === 0 && scenarioKey) {
+          setCompletedScenarioKey(scenarioKey);
         }
       }, NARRATIVE_ANIMATION_DELAY_MS),
     );
@@ -229,7 +240,7 @@ export default function SandboxChart({ result }: SandboxChartProps) {
     return () => {
       timers.forEach((timer) => clearTimeout(timer));
     };
-  }, [projectedColor, result]);
+  }, [projectedColor, result, scenarioKey]);
 
   return (
     <div className="relative w-full">
@@ -245,7 +256,7 @@ export default function SandboxChart({ result }: SandboxChartProps) {
         </span>
       )}
 
-      {result && showNarrativeOverlay && (
+      {result && scenarioKey && completedScenarioKey === scenarioKey && (
         <div className="absolute left-3 bottom-3 max-w-[70%] rounded-md bg-slate-950/80 border border-slate-700/70 px-3 py-2 text-xs text-white leading-relaxed">
           <p
             style={{
