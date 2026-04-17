@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_MODE=sqlite
+      - DB_PATH=/app/data/ritam.db
+      - ENVIRONMENT=development
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Uncomment for PostgreSQL in production:
+  # db:
+  #   image: postgres:15
+  #   environment:
+  #     POSTGRES_DB: ritam
+  #     POSTGRES_USER: ritam
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #
+  # volumes:
+  #   postgres_data:

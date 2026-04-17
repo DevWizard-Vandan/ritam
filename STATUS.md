@@ -85,7 +85,7 @@ The system gets smarter every week via RL weight updates and grows its analog me
 | L6 | Signal Quality + Backtesting | ✅ Done | Codex |
 | L7 | Live Prediction Chart Dashboard | ✅ Done | Copilot |
 | L8 | Sandbox — "What If" Time Machine | ✅ Frontend Complete | Copilot |
-| L9 | Landing Page + Waitlist + Invite Deploy | ⏳ Pending | — |
+| L9 | Landing Page + Waitlist + Invite Deploy | ✅ Done | — |
 | L10 | Public Pricing + Launch | ⏳ Pending | — |
 
 ---
