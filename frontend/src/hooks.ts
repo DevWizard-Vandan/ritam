@@ -8,6 +8,8 @@ import type {
   AgentsStatsResponse,
   WeightHistoryEntry,
   CandleData,
+  SandboxRequest,
+  ScenarioResult,
 } from './types';
 
 const API_BASE: string = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -301,4 +303,47 @@ export function useWeightHistory(agentName: string) {
     [agentName],
   );
   return usePolling(fetcher, 300_000); // refresh every 5 min
+}
+
+export function useSandbox(): {
+  run: (req: SandboxRequest) => Promise<ScenarioResult>;
+  result: ScenarioResult | null;
+  loading: boolean;
+  error: string | null;
+} {
+  const [result, setResult] = useState<ScenarioResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = useCallback(async (req: SandboxRequest): Promise<ScenarioResult> => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/sandbox/run`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(req),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `Sandbox request failed with status ${response.status}`);
+      }
+
+      const data = (await response.json()) as ScenarioResult;
+      setResult(data);
+      return data;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to run sandbox scenario';
+      setError(message);
+      throw new Error(message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { run, result, loading, error };
 }

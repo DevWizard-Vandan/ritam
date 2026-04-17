@@ -1,5 +1,5 @@
 # RITAM - Project Status
-# Last Updated: April 16, 2026 — L7 Live Prediction Chart Dashboard complete
+# Last Updated: April 17, 2026 — L8 Sandbox frontend complete
 # Updating Agent: Vandan
 
 ---
@@ -62,6 +62,7 @@ The system gets smarter every week via RL weight updates and grows its analog me
   - PredictionChart (lightweight-charts candlesticks, prediction zone, confidence meter, live regime badge)
   - `VITE_API_BASE_URL` env var — no hardcoded localhost
 - [x] `frontend/.env.example` — environment config template
+- [x] `frontend/` Sandbox UI — tab toggle, timeline slider + milestones, animated scenario chart, confidence bar, sandbox API integration
 - [x] All agent runtime hotfixes (SectorRotation, OptionsChain, MarketBreadth, GlobalMarket)
 - [x] `scripts/seed_historical.py`, `scripts/verify_db.py`, `scripts/seed_intraday.py`
 - [x] Full test suite across all modules incl. `tests/paper_trading/test_engine.py`
@@ -81,7 +82,7 @@ The system gets smarter every week via RL weight updates and grows its analog me
 | L5 | Paper Trading Engine | ✅ Done | PR #45 |
 | L6 | Signal Quality + Backtesting | ✅ Done | Codex |
 | L7 | Live Prediction Chart Dashboard | ✅ Done | Copilot |
-| L8 | Sandbox — "What If" Time Machine | ⏳ Pending | — |
+| L8 | Sandbox — "What If" Time Machine | ✅ Frontend Complete | Copilot |
 | L9 | Landing Page + Waitlist + Invite Deploy | ⏳ Pending | — |
 | L10 | Public Pricing + Launch | ⏳ Pending | — |
 
