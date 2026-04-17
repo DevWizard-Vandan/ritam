@@ -1,6 +1,6 @@
 # RITAM - Project Status
-# Last Updated: April 17, 2026 — L8 Sandbox frontend complete
-# Updating Agent: Vandan
+# Last Updated: April 17, 2026 — Frontend redesign complete
+# Updating Agent: Codex
 
 ---
 
@@ -63,6 +63,8 @@ The system gets smarter every week via RL weight updates and grows its analog me
   - `VITE_API_BASE_URL` env var — no hardcoded localhost
 - [x] `frontend/.env.example` — environment config template
 - [x] `frontend/` Sandbox UI — tab toggle, timeline slider + milestones, animated scenario chart, confidence bar, sandbox API integration
+- [x] `frontend/` dashboard redesign — premium light theme, Inter typography, Framer Motion transitions, white chart surfaces, refreshed sandbox controls, and unified card styling
+- [x] `frontend/` auth + settings enhancement — login page gate added, settings tab added, dark mode switch with local persistence, and logout flow to return to login
 - [x] All agent runtime hotfixes (SectorRotation, OptionsChain, MarketBreadth, GlobalMarket)
 - [x] `scripts/seed_historical.py`, `scripts/verify_db.py`, `scripts/seed_intraday.py`
 - [x] Full test suite across all modules incl. `tests/paper_trading/test_engine.py`

@@ -1,88 +1,79 @@
+import { motion } from 'framer-motion';
 import { useExplanation } from '../hooks';
 
-const MOCK_EXPLANATION = `[RITAM Reasoning Engine — Gemma 4 E2B]
+const SKELETON_WIDTHS = ['96%', '88%', '92%', '74%', '81%', '69%', '85%', '72%'] as const;
+
+const MOCK_EXPLANATION = `[RITAM Reasoning Engine - Gemini 2.5 Flash]
 
 Current Market Assessment:
-─────────────────────────
-The Nifty 50 index is consolidating near the 22,400 level
-after a sharp intraday recovery. Today's session saw initial
-weakness driven by overnight sell-off in US futures, but
-domestic institutional buying absorbed supply near 22,200.
+The Nifty 50 index is consolidating near the 22,400 level after a sharp intraday recovery. Today's session saw initial weakness driven by overnight selling in US futures, but domestic institutional buying absorbed supply near 22,200.
 
 Key Observations:
-• FII net sellers of ₹1,240 Cr in cash segment
-• DII net buyers of ₹1,850 Cr — strong domestic support
-• India VIX elevated at 16.2 — moderate caution warranted
-• Sentiment score via FinBERT: +0.18 (mildly bullish)
+- FII net sellers of Rs1,240 Cr in cash
+- DII net buyers of Rs1,850 Cr supporting the tape
+- India VIX elevated at 16.2, so caution remains justified
+- FinBERT sentiment score: +0.18, mildly constructive
 
-Regime Classification: RECOVERY
+Regime Classification: Recovery
 Historical Analog Match: March 2020 bounce (73% similarity)
-→ Analog outcome: +4.2% over next 5 sessions
+Analog Outcome: +4.2% over the next 5 sessions
 
-Recommendation: HOLD with mild bullish bias.
-The system maintains a hold stance given conflicting
-FII/DII signals, but the historical analog and positive
-sentiment tilt suggest upside probability is elevated.
+Recommendation:
+Hold with a mild bullish bias. Conflicting flow signals keep conviction tempered, but the analog and sentiment stack still lean constructive.
 
-Confidence: 68%  •  Timeframe: 20 minutes
-──────────────────────────────────────────
+Confidence: 68%
+Timeframe: 20 minutes
+
 Generated at ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`;
 
 export default function ExplanationPanel() {
   const { data, loading } = useExplanation(60_000);
-
   const explanation = data?.explanation || MOCK_EXPLANATION;
 
   return (
-    <div
+    <motion.section
       id="explanation-panel"
-      className="glass-card p-6 sm:p-7 flex flex-col gap-4 animate-slide-up"
-      style={{ animationDelay: '0.3s' }}
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: 0.2 }}
+      className="panel-card p-6"
     >
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-mist">
-          Gemma Explanation
-        </h3>
-        <div className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-slow" />
-          <span className="text-[10px] text-ash uppercase tracking-wider">
+      <div className="flex h-full flex-col gap-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="panel-label">Reasoning Narrative</p>
+            <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">Gemini 2.5</p>
+            <p className="mt-2 text-sm text-slate-600">
+              Structured context from the active reasoning engine.
+            </p>
+          </div>
+          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500">
             {data ? 'Live' : 'Demo'}
-          </span>
+          </div>
         </div>
-      </div>
 
-      {/* Explanation text container with scrolling */}
-      <div className="relative flex-1 min-h-0">
-        {loading ? (
-          <div className="space-y-2 animate-pulse">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-3 rounded bg-steel/30"
-                style={{ width: `${60 + Math.random() * 40}%` }}
-              />
-            ))}
-          </div>
-        ) : (
-          <div
-            className="overflow-y-auto max-h-[340px] pr-2"
-          >
-            <pre className="font-mono text-xs sm:text-[13px] leading-relaxed text-silver whitespace-pre-wrap break-words selection:bg-accent-dim">
-              {explanation}
-            </pre>
-          </div>
+        <div className="panel-muted min-h-0 flex-1 p-4">
+          {loading ? (
+            <div className="space-y-2 animate-pulse">
+              {SKELETON_WIDTHS.map((width) => (
+                <div key={width} className="h-3 rounded bg-slate-200" style={{ width }} />
+              ))}
+            </div>
+          ) : (
+            <div className="max-h-[340px] overflow-y-auto pr-2">
+              <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-slate-700">
+                {explanation}
+              </pre>
+            </div>
+          )}
+        </div>
+
+        {data?.timestamp && (
+          <p className="border-t border-slate-200 pt-4 font-mono text-xs text-slate-500">
+            Generated {new Date(data.timestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+          </p>
         )}
       </div>
-
-      {/* Footer */}
-      {data?.timestamp && (
-        <div className="pt-3 border-t border-steel/30">
-          <p className="text-[10px] text-ash">
-            Generated: {new Date(data.timestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
-          </p>
-        </div>
-      )}
-    </div>
+    </motion.section>
   );
 }

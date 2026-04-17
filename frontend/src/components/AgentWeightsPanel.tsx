@@ -1,53 +1,48 @@
 import { useMemo } from 'react';
+import { motion } from 'framer-motion';
 import { useAgentsStats } from '../hooks';
 import type { AgentStat } from '../types';
 
 const BASELINE_WEIGHT = 1.0;
 const MAX_WEIGHT_SCALE = 2.0;
 
-/* ── Weight bar sub-component ── */
 function WeightBar({ weight }: { weight: number }) {
   const isAbove = weight >= BASELINE_WEIGHT;
   const pct = Math.min((weight / MAX_WEIGHT_SCALE) * 100, 100);
+
   return (
-    <div className="flex items-center gap-2 w-full">
-      <div className="flex-1 h-2 rounded-full bg-slate-deep/80 overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-700 ease-out ${
-            isAbove ? 'bg-signal-buy' : 'bg-signal-sell'
-          }`}
-          style={{ width: `${pct}%` }}
+    <div className="flex items-center gap-3">
+      <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
+          className={`h-full rounded-full ${isAbove ? 'bg-blue-500' : 'bg-red-400'}`}
         />
       </div>
-      <span
-        className={`text-xs font-semibold tabular-nums w-10 text-right ${
-          isAbove ? 'text-signal-buy' : 'text-signal-sell'
-        }`}
-      >
+      <span className={`w-12 text-right font-mono text-xs ${isAbove ? 'text-slate-700' : 'text-red-500'}`}>
         {weight.toFixed(3)}
       </span>
     </div>
   );
 }
 
-/* ── Skeleton row ── */
 function SkeletonRow() {
   return (
-    <tr className="animate-pulse border-t border-steel/20">
-      <td className="py-3 px-4"><div className="h-3 w-32 rounded bg-steel/30" /></td>
-      <td className="py-3 px-4"><div className="h-2 w-full rounded-full bg-steel/30" /></td>
-      <td className="py-3 px-4"><div className="h-3 w-12 rounded bg-steel/30" /></td>
-      <td className="py-3 px-4 hidden sm:table-cell"><div className="h-3 w-12 rounded bg-steel/30" /></td>
-      <td className="py-3 px-4 hidden md:table-cell"><div className="h-3 w-10 rounded bg-steel/30" /></td>
-      <td className="py-3 px-4 hidden lg:table-cell"><div className="h-3 w-24 rounded bg-steel/30" /></td>
+    <tr className="border-t border-slate-200 animate-pulse">
+      <td className="px-4 py-3"><div className="h-3 w-28 rounded bg-slate-200" /></td>
+      <td className="px-4 py-3"><div className="h-2.5 rounded-full bg-slate-100" /></td>
+      <td className="px-4 py-3"><div className="h-3 w-12 rounded bg-slate-200" /></td>
+      <td className="hidden px-4 py-3 sm:table-cell"><div className="h-3 w-12 rounded bg-slate-200" /></td>
+      <td className="hidden px-4 py-3 md:table-cell"><div className="h-3 w-10 rounded bg-slate-200" /></td>
+      <td className="hidden px-4 py-3 lg:table-cell"><div className="h-3 w-24 rounded bg-slate-200" /></td>
     </tr>
   );
 }
 
-/* ── Agent row ── */
 function AgentRow({ stat }: { stat: AgentStat }) {
-  const acc7d = stat.accuracy_7d != null ? `${(stat.accuracy_7d * 100).toFixed(1)}%` : '—';
-  const acc30d = stat.accuracy_30d != null ? `${(stat.accuracy_30d * 100).toFixed(1)}%` : '—';
+  const acc7d = stat.accuracy_7d != null ? `${(stat.accuracy_7d * 100).toFixed(1)}%` : '--';
+  const acc30d = stat.accuracy_30d != null ? `${(stat.accuracy_30d * 100).toFixed(1)}%` : '--';
   const lastUpdated = stat.last_updated
     ? new Date(stat.last_updated).toLocaleDateString('en-IN', {
         timeZone: 'Asia/Kolkata',
@@ -57,105 +52,93 @@ function AgentRow({ stat }: { stat: AgentStat }) {
         minute: '2-digit',
         hour12: false,
       })
-    : '—';
-
-  const shortName = stat.agent_name.replace(/Agent$/, '');
+    : '--';
 
   return (
-    <tr className="border-t border-steel/20 hover:bg-slate-deep/30 transition-colors">
-      <td className="py-3 px-4">
-        <span className="text-xs font-medium text-frost whitespace-nowrap">{shortName}</span>
+    <tr className="border-t border-slate-200 transition-colors hover:bg-slate-50">
+      <td className="px-4 py-3 text-sm font-medium text-slate-900">
+        {stat.agent_name.replace(/Agent$/, '')}
       </td>
-      <td className="py-3 px-4 min-w-[120px]">
+      <td className="min-w-[160px] px-4 py-3">
         <WeightBar weight={stat.weight} />
       </td>
-      <td className="py-3 px-4 text-xs tabular-nums text-mist">{acc7d}</td>
-      <td className="py-3 px-4 hidden sm:table-cell text-xs tabular-nums text-mist">{acc30d}</td>
-      <td className="py-3 px-4 hidden md:table-cell text-xs tabular-nums text-ash">
+      <td className="px-4 py-3 font-mono text-xs text-slate-700">{acc7d}</td>
+      <td className="hidden px-4 py-3 font-mono text-xs text-slate-700 sm:table-cell">{acc30d}</td>
+      <td className="hidden px-4 py-3 font-mono text-xs text-slate-500 md:table-cell">
         {stat.total_predictions ?? 0}
       </td>
-      <td className="py-3 px-4 hidden lg:table-cell text-[10px] text-ash whitespace-nowrap">
-        {lastUpdated}
-      </td>
+      <td className="hidden px-4 py-3 font-mono text-xs text-slate-500 lg:table-cell">{lastUpdated}</td>
     </tr>
   );
 }
 
 export default function AgentWeightsPanel() {
   const { data, loading, error } = useAgentsStats(60_000);
-
   const sorted: AgentStat[] = useMemo(() => {
     if (!data?.agents) return [];
     return [...data.agents].sort((a, b) => b.weight - a.weight);
   }, [data]);
 
   return (
-    <div
+    <motion.section
       id="agent-weights-panel"
-      className="glass-card p-6 sm:p-7 flex flex-col gap-4 animate-slide-up"
-      style={{ animationDelay: '0.4s' }}
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: 0.25 }}
+      className="panel-card p-6"
     >
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-mist">
-          Agent Weights
-        </h3>
-        <div className="flex items-center gap-1.5">
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${
-              error ? 'bg-signal-sell' : 'bg-signal-buy'
-            } animate-pulse-slow`}
-          />
-          <span className="text-[10px] text-ash uppercase tracking-wider">
+      <div className="flex flex-col gap-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="panel-label">Agent Weights</p>
+            <p className="panel-value mt-3">{String(sorted.length).padStart(2, '0')}</p>
+            <p className="mt-2 text-sm text-slate-600">
+              RL weighting with live 7-day and 30-day hit rates.
+            </p>
+          </div>
+          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500">
             {error ? 'Offline' : data ? 'Live' : 'Loading'}
-          </span>
+          </div>
         </div>
-      </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto -mx-2">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="text-[10px] uppercase tracking-wider text-ash">
-              <th className="py-2 px-4 font-medium">Agent</th>
-              <th className="py-2 px-4 font-medium">Weight</th>
-              <th className="py-2 px-4 font-medium">7d Acc</th>
-              <th className="py-2 px-4 hidden sm:table-cell font-medium">30d Acc</th>
-              <th className="py-2 px-4 hidden md:table-cell font-medium">Predictions</th>
-              <th className="py-2 px-4 hidden lg:table-cell font-medium">Last Updated</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <>
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <SkeletonRow key={i} />
-                ))}
-              </>
-            ) : sorted.length > 0 ? (
-              sorted.map((stat) => (
-                <AgentRow key={stat.agent_name} stat={stat} />
-              ))
-            ) : (
-              <tr>
-                <td colSpan={6} className="py-8 text-center text-sm text-ash">
-                  No agent data available yet.
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-left">
+            <thead>
+              <tr className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">
+                <th className="px-4 py-2">Agent</th>
+                <th className="px-4 py-2">Weight</th>
+                <th className="px-4 py-2">7d Acc</th>
+                <th className="hidden px-4 py-2 sm:table-cell">30d Acc</th>
+                <th className="hidden px-4 py-2 md:table-cell">Predictions</th>
+                <th className="hidden px-4 py-2 lg:table-cell">Last Updated</th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {loading ? (
+                <>
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <SkeletonRow key={`skeleton-${index}`} />
+                  ))}
+                </>
+              ) : sorted.length > 0 ? (
+                sorted.map((stat) => <AgentRow key={stat.agent_name} stat={stat} />)
+              ) : (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-sm text-slate-500">
+                    No agent data available yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-      {/* Footer timestamp */}
-      {data?.updated_at && (
-        <p className="text-[10px] text-ash border-t border-steel/20 pt-3">
-          Updated:{' '}
-          {new Date(data.updated_at).toLocaleString('en-IN', {
-            timeZone: 'Asia/Kolkata',
-          })}
-        </p>
-      )}
-    </div>
+        {data?.updated_at && (
+          <p className="border-t border-slate-200 pt-4 font-mono text-xs text-slate-500">
+            Updated {new Date(data.updated_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+          </p>
+        )}
+      </div>
+    </motion.section>
   );
 }

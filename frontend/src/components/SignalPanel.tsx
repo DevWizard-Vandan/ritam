@@ -1,12 +1,12 @@
+import { motion } from 'framer-motion';
 import { useLivePrediction } from '../hooks';
 import type { PredictionData } from '../types';
 
-/* ── Mock signal data when backend is not available ── */
 const MOCK_SIGNAL: PredictionData = {
   timestamp: new Date().toISOString(),
   predicted_direction: 'hold',
-  predicted_move_pct: 0.0,
-  confidence: 0.0,
+  predicted_move_pct: 0,
+  confidence: 0,
   timeframe_minutes: 20,
   regime: 'awaiting_data',
 };
@@ -17,38 +17,31 @@ function getSignalConfig(direction: string) {
     case 'buy':
       return {
         label: 'BUY',
-        textClass: 'text-signal-buy',
-        glowClass: 'glow-buy',
-        bgGradient: 'from-signal-buy-glow via-transparent to-transparent',
-        dotColor: 'bg-signal-buy',
-        ringColor: 'ring-signal-buy/30',
+        textClass: 'text-green-700',
+        badgeClass: 'border border-green-200 bg-green-50 text-green-700',
+        dotClass: 'bg-green-600',
       };
     case 'down':
     case 'sell':
       return {
         label: 'SELL',
-        textClass: 'text-signal-sell',
-        glowClass: 'glow-sell',
-        bgGradient: 'from-signal-sell-glow via-transparent to-transparent',
-        dotColor: 'bg-signal-sell',
-        ringColor: 'ring-signal-sell/30',
+        textClass: 'text-red-700',
+        badgeClass: 'border border-red-200 bg-red-50 text-red-700',
+        dotClass: 'bg-red-600',
       };
     default:
       return {
         label: 'HOLD',
-        textClass: 'text-signal-hold',
-        glowClass: 'glow-hold',
-        bgGradient: 'from-signal-hold-glow via-transparent to-transparent',
-        dotColor: 'bg-signal-hold',
-        ringColor: 'ring-signal-hold/30',
+        textClass: 'text-amber-700',
+        badgeClass: 'border border-amber-200 bg-amber-50 text-amber-700',
+        dotClass: 'bg-amber-600',
       };
   }
 }
 
 function formatTimestamp(ts: string): string {
   try {
-    const d = new Date(ts);
-    return d.toLocaleString('en-IN', {
+    return new Date(ts).toLocaleString('en-IN', {
       timeZone: 'Asia/Kolkata',
       day: '2-digit',
       month: 'short',
@@ -65,74 +58,75 @@ function formatTimestamp(ts: string): string {
 
 export default function SignalPanel() {
   const { data, loading, connected } = useLivePrediction(30_000);
-
-  const signal: PredictionData = data ?? MOCK_SIGNAL;
-
+  const signal = data ?? MOCK_SIGNAL;
   const cfg = getSignalConfig(signal.predicted_direction);
-  const sentimentScore = signal.confidence;
+  const confidencePct = Math.round(signal.confidence <= 1 ? signal.confidence * 100 : signal.confidence);
+  const signalKey = `${signal.timestamp}-${cfg.label}`;
 
   return (
-    <div
+    <motion.section
       id="signal-panel"
-      className={`glass-card ${cfg.glowClass} animate-glow-breathe relative overflow-hidden p-6 sm:p-8 flex flex-col items-center justify-center gap-5`}
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: 0.05 }}
+      className="panel-card p-6"
     >
-      {/* Background radial glow */}
-      <div
-        className={`absolute inset-0 bg-gradient-radial ${cfg.bgGradient} opacity-40 pointer-events-none`}
-      />
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="panel-label">Current Signal</p>
+            <p className="panel-value mt-3">
+              {loading ? '--' : `${signal.predicted_move_pct >= 0 ? '+' : ''}${signal.predicted_move_pct.toFixed(2)}%`}
+            </p>
+            <p className="mt-2 text-sm font-normal text-slate-600">
+              15-minute market stance with live prediction wiring intact.
+            </p>
+          </div>
 
-      {/* Header */}
-      <div className="relative z-10 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-mist">
-        <span className={`w-2 h-2 rounded-full ${cfg.dotColor} animate-pulse-slow`} />
-        Live Signal
-        {!loading && (
-          <span className={`ml-1 text-[10px] ${connected ? 'text-signal-buy' : 'text-ash'}`}>
-            {connected ? '● WS' : '○ REST'}
-          </span>
-        )}
-      </div>
+          <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500">
+            <span className={`h-2 w-2 rounded-full ${connected ? 'bg-green-500' : 'bg-slate-300'}`} />
+            <span>{loading ? 'Loading' : connected ? 'WebSocket' : 'REST Fallback'}</span>
+          </div>
+        </div>
 
-      {/* Main signal */}
-      <div className="relative z-10 flex flex-col items-center gap-2">
-        <h2
-          className={`text-5xl sm:text-6xl lg:text-7xl font-black tracking-tight ${cfg.textClass} transition-all duration-500`}
+        <motion.div
+          key={signalKey}
+          animate={{ scale: [1, 1.08, 1] }}
+          transition={{ duration: 0.3 }}
+          className={`inline-flex w-fit items-center gap-3 rounded-full px-4 py-2 text-sm font-semibold ${cfg.badgeClass}`}
         >
-          {loading ? '—' : cfg.label}
-        </h2>
-        <p className="text-sm text-mist font-medium">
-          {loading ? 'Loading...' : `${(signal.predicted_move_pct).toFixed(2)}% expected move`}
-        </p>
-      </div>
+          <span className={`h-2.5 w-2.5 rounded-full ${cfg.dotClass}`} />
+          <span className={cfg.textClass}>{loading ? 'Awaiting data' : cfg.label}</span>
+        </motion.div>
 
-      {/* Badges row */}
-      <div className="relative z-10 flex flex-wrap items-center justify-center gap-3 mt-1">
-        {/* Confidence */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-deep/70 border border-steel/40">
-          <span className="text-xs text-ash uppercase tracking-wider">Confidence</span>
-          <span className={`text-sm font-semibold ${cfg.textClass}`}>
-            {loading ? '—' : `${(sentimentScore * 100).toFixed(0)}%`}
-          </span>
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="panel-muted p-4">
+            <p className="panel-label">Confidence</p>
+            <p className="mt-3 font-mono text-2xl font-semibold text-slate-900">
+              {loading ? '--' : `${confidencePct}%`}
+            </p>
+          </div>
+          <div className="panel-muted p-4">
+            <p className="panel-label">Regime</p>
+            <p className="mt-3 text-lg font-semibold capitalize text-slate-900">
+              {loading ? '--' : signal.regime.replaceAll('_', ' ')}
+            </p>
+          </div>
+          <div className="panel-muted p-4">
+            <p className="panel-label">Window</p>
+            <p className="mt-3 font-mono text-2xl font-semibold text-slate-900">
+              {signal.timeframe_minutes}m
+            </p>
+          </div>
         </div>
-        {/* Regime */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-deep/70 border border-steel/40">
-          <span className="text-xs text-ash uppercase tracking-wider">Regime</span>
-          <span className="text-sm font-semibold text-cyan">
-            {loading ? '—' : signal.regime.replace('_', ' ')}
-          </span>
-        </div>
-        {/* Timeframe */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-deep/70 border border-steel/40">
-          <span className="text-xs text-ash uppercase tracking-wider">Window</span>
-          <span className="text-sm font-semibold text-silver">
-            {signal.timeframe_minutes}m
+
+        <div className="flex flex-col gap-2 border-t border-slate-200 pt-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+          <span>Signal direction: <span className={`font-semibold ${cfg.textClass}`}>{cfg.label}</span></span>
+          <span className="font-mono text-slate-500">
+            {loading ? 'Waiting for prediction feed' : `Updated ${formatTimestamp(signal.timestamp)}`}
           </span>
         </div>
       </div>
-
-      {/* Timestamp */}
-      <p className="relative z-10 text-xs text-ash mt-1">
-        {loading ? '' : `Last update: ${formatTimestamp(signal.timestamp)}`}
-      </p>
-    </div>
+    </motion.section>
   );
 }

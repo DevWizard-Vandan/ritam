@@ -1,112 +1,79 @@
+import { motion } from 'framer-motion';
 import { useAnalogs } from '../hooks';
 import type { Analog } from '../types';
 
-/* ── Similarity visual indicator ── */
 function SimilarityArc({ score }: { score: number }) {
   const pct = Math.round(score * 100);
-  const circumference = 2 * Math.PI * 28;
-  const offset = circumference - (score * circumference);
+  const circumference = 2 * Math.PI * 26;
+  const offset = circumference - score * circumference;
 
   return (
-    <div className="relative w-16 h-16 flex-shrink-0">
-      <svg viewBox="0 0 64 64" className="w-full h-full -rotate-90">
+    <div className="relative h-16 w-16 flex-shrink-0">
+      <svg viewBox="0 0 60 60" className="h-full w-full -rotate-90">
+        <circle cx="30" cy="30" r="26" fill="none" stroke="#E2E8F0" strokeWidth="4" />
         <circle
-          cx="32"
-          cy="32"
-          r="28"
+          cx="30"
+          cy="30"
+          r="26"
           fill="none"
-          stroke="rgba(42,53,85,0.4)"
-          strokeWidth="3"
-        />
-        <circle
-          cx="32"
-          cy="32"
-          r="28"
-          fill="none"
-          stroke="url(#similarity-gradient)"
-          strokeWidth="3"
+          stroke="url(#analog-gradient)"
+          strokeWidth="4"
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
-          className="transition-all duration-700 ease-out"
         />
         <defs>
-          <linearGradient id="similarity-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#6c5ce7" />
-            <stop offset="100%" stopColor="#00d4ff" />
+          <linearGradient id="analog-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#60A5FA" />
+            <stop offset="100%" stopColor="#2563EB" />
           </linearGradient>
         </defs>
       </svg>
-      <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-frost rotate-0">
+      <span className="absolute inset-0 flex items-center justify-center font-mono text-sm font-semibold text-slate-900">
         {pct}%
       </span>
     </div>
   );
 }
 
-/* ── Analog card ── */
-function AnalogCard({ analog, index }: { analog: Analog; index: number }) {
+function AnalogRow({ analog }: { analog: Analog }) {
   const isPositive = analog.next_5day_return >= 0;
 
   return (
-    <div
-      className="glass-card p-4 sm:p-5 flex items-center gap-4 group animate-slide-up"
-      style={{ animationDelay: `${0.15 + index * 0.1}s` }}
-    >
+    <div className="panel-muted flex items-center gap-4 p-4 transition-colors hover:bg-white">
       <SimilarityArc score={analog.similarity_score} />
-
-      <div className="flex-1 min-w-0 space-y-1.5">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium uppercase tracking-wider text-ash">Period</span>
-        </div>
-        <p className="text-sm font-semibold text-frost truncate">
-          {analog.start_date} → {analog.end_date}
+      <div className="min-w-0 flex-1">
+        <p className="panel-label">Matched Window</p>
+        <p className="mt-2 truncate text-sm font-semibold text-slate-900">
+          {analog.start_date} to {analog.end_date}
         </p>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-ash">Next 5-day return:</span>
-          <span
-            className={`text-sm font-bold ${
-              isPositive ? 'text-signal-buy' : 'text-signal-sell'
-            }`}
-          >
-            {isPositive ? '+' : ''}{analog.next_5day_return.toFixed(2)}%
+        <div className="mt-3 flex items-center gap-3">
+          <span className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+            Analog Outcome
+          </span>
+          <span className={`font-mono text-sm font-semibold ${isPositive ? 'text-green-700' : 'text-red-700'}`}>
+            {isPositive ? '+' : ''}
+            {analog.next_5day_return.toFixed(2)}%
           </span>
         </div>
       </div>
-
-      {/* Direction arrow */}
-      <div
-        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-          isPositive ? 'bg-signal-buy-dim' : 'bg-signal-sell-dim'
-        } transition-transform duration-300 group-hover:scale-110`}
-      >
-        <svg
-          viewBox="0 0 16 16"
-          className={`w-4 h-4 ${isPositive ? 'text-signal-buy' : 'text-signal-sell rotate-180'}`}
-          fill="currentColor"
-        >
-          <path d="M8 3l5 6H3z" />
-        </svg>
-      </div>
     </div>
   );
 }
 
-/* ── Skeleton ── */
-function SkeletonCard() {
+function SkeletonRow() {
   return (
-    <div className="glass-card p-5 flex items-center gap-4 animate-pulse">
-      <div className="w-16 h-16 rounded-full bg-steel/30 flex-shrink-0" />
+    <div className="panel-muted flex items-center gap-4 p-4 animate-pulse">
+      <div className="h-16 w-16 rounded-full bg-slate-200" />
       <div className="flex-1 space-y-2">
-        <div className="h-3 w-16 rounded bg-steel/30" />
-        <div className="h-4 w-40 rounded bg-steel/30" />
-        <div className="h-3 w-24 rounded bg-steel/30" />
+        <div className="h-3 w-24 rounded bg-slate-200" />
+        <div className="h-4 w-48 rounded bg-slate-200" />
+        <div className="h-3 w-28 rounded bg-slate-200" />
       </div>
     </div>
   );
 }
 
-/* ── Mock analogs for display when API is unavailable ── */
 const MOCK_ANALOGS: Analog[] = [
   {
     start_date: '2020-03-10',
@@ -130,36 +97,45 @@ const MOCK_ANALOGS: Analog[] = [
 
 export default function AnalogPanel() {
   const { data, loading, error } = useAnalogs(60_000);
-  const analogs = data && data.length > 0 ? data : (!loading ? MOCK_ANALOGS : []);
+  const analogs = data && data.length > 0 ? data : !loading ? MOCK_ANALOGS : [];
+  const topSimilarity = analogs.length > 0 ? `${Math.round(analogs[0].similarity_score * 100)}%` : '--';
 
   return (
-    <div id="analog-panel" className="flex flex-col gap-4 animate-slide-up" style={{ animationDelay: '0.2s' }}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-1">
-        <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-mist">
-          Historical Analogs
-        </h3>
-        {error && !data && (
-          <span className="text-[10px] text-ash px-2 py-0.5 rounded-full bg-slate-deep border border-steel/40">
-            Demo data
-          </span>
-        )}
-      </div>
+    <motion.section
+      id="analog-panel"
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: 0.15 }}
+      className="panel-card p-6"
+    >
+      <div className="flex flex-col gap-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="panel-label">Historical Analogs</p>
+            <p className="panel-value mt-3">{topSimilarity}</p>
+            <p className="mt-2 text-sm text-slate-600">
+              Closest market rhymes ranked by pattern similarity.
+            </p>
+          </div>
+          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500">
+            {error && !data ? 'Demo data' : 'Live analogs'}
+          </div>
+        </div>
 
-      {/* Cards */}
-      {loading ? (
         <div className="space-y-3">
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
+          {loading ? (
+            <>
+              <SkeletonRow />
+              <SkeletonRow />
+              <SkeletonRow />
+            </>
+          ) : (
+            analogs.slice(0, 3).map((analog) => (
+              <AnalogRow key={`${analog.start_date}-${analog.end_date}`} analog={analog} />
+            ))
+          )}
         </div>
-      ) : (
-        <div className="space-y-3">
-          {analogs.slice(0, 3).map((analog, i) => (
-            <AnalogCard key={`${analog.start_date}-${analog.end_date}`} analog={analog} index={i} />
-          ))}
-        </div>
-      )}
-    </div>
+      </div>
+    </motion.section>
   );
 }
