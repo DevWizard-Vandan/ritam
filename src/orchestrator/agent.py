@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 
 from src.data.news_fetcher import fetch_headlines
 from loguru import logger
+
+last_cycle_time = None
 from src.reasoning.analog_finder import find_analogs
 from src.reasoning.regime_classifier import classify_regime
 from src.sentiment.scorer import score_headlines
@@ -361,6 +363,9 @@ class MarketOrchestrator:
         timestamp = self.loop.record_prediction(result)
         logger.info(f"Prediction recorded: {signal} at {timestamp}")
 
+        global last_cycle_time
+        import datetime as dt
+        last_cycle_time = dt.datetime.now(dt.timezone(dt.timedelta(hours=5, minutes=30))).isoformat()
         return result
 
     @staticmethod

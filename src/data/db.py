@@ -2,7 +2,6 @@
 SQLite database helpers — write and read OHLCV candles and news headlines.
 Uses SQLAlchemy for all DB operations.
 """
-import sqlite3
 import os
 from src.config import settings
 try:
@@ -11,16 +10,93 @@ except ModuleNotFoundError:  # pragma: no cover - environment fallback
     import logging
     logger = logging.getLogger(__name__)
 
+DB_MODE = os.getenv("DB_MODE", "sqlite")
+PLACEHOLDER = "%s" if DB_MODE == "postgres" else "?"
 
-def get_connection():
-    os.makedirs(os.path.dirname(settings.DB_PATH), exist_ok=True)
-    return sqlite3.connect(settings.DB_PATH)
+class CursorWrapper:
+    def __init__(self, cursor):
+        self.cursor = cursor
+        self.rowcount = -1
+        self.lastrowid = None
+
+    def execute(self, query, params=None):
+        if DB_MODE == "postgres":
+            query = query.replace("?", "%s")
+            import re
+            query = re.sub(r':(\w+)', r'%(\1)s', query)
+
+        if params is not None:
+            self.cursor.execute(query, params)
+        else:
+            self.cursor.execute(query)
+        self.rowcount = self.cursor.rowcount
+        try:
+            self.lastrowid = self.cursor.lastrowid
+        except Exception:
+            pass # postgres doesn't support lastrowid out of the box in the same way
+        return self
+
+    def executemany(self, query, params):
+        if DB_MODE == "postgres":
+            query = query.replace("?", "%s")
+            import re
+            query = re.sub(r':(\w+)', r'%(\1)s', query)
+        self.cursor.executemany(query, params)
+        self.rowcount = self.cursor.rowcount
+        return self
+
+    def fetchall(self):
+        return self.cursor.fetchall()
+
+    def fetchone(self):
+        return self.cursor.fetchone()
+
+class ConnectionWrapper:
+    def __init__(self, conn):
+        self.conn = conn
+
+    def execute(self, query, params=None):
+        cursor = CursorWrapper(self.conn.cursor())
+        return cursor.execute(query, params)
+
+    def executemany(self, query, params):
+        cursor = CursorWrapper(self.conn.cursor())
+        return cursor.executemany(query, params)
+
+    def commit(self):
+        self.conn.commit()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            self.conn.commit()
+        self.conn.close()
+
+if DB_MODE == "postgres":
+    import psycopg2
+    DATABASE_URL = os.getenv("DATABASE_URL")
+    def get_connection():
+        return ConnectionWrapper(psycopg2.connect(DATABASE_URL))
+else:
+    import sqlite3
+    def get_connection():
+        os.makedirs(os.path.dirname(settings.DB_PATH), exist_ok=True)
+        return sqlite3.connect(settings.DB_PATH)
+
+def execute_ddl(conn, query):
+    if DB_MODE == "postgres":
+        query = query.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+        query = query.replace("(datetime('now'))", "CURRENT_TIMESTAMP")
+        query = query.replace("WITHOUT ROWID", "")
+    conn.execute(query)
 
 
 def init_db():
     """Create tables if they do not exist."""
     with get_connection() as conn:
-        conn.execute("""
+        execute_ddl(conn, """
             CREATE TABLE IF NOT EXISTS candles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 symbol TEXT NOT NULL,
@@ -29,7 +105,7 @@ def init_db():
                 UNIQUE(symbol, timestamp_ist)
             )
         """)
-        conn.execute("""
+        execute_ddl(conn, """
             CREATE TABLE IF NOT EXISTS headlines (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source TEXT,
@@ -39,7 +115,7 @@ def init_db():
                 fetched_at TEXT
             )
         """)
-        conn.execute("""
+        execute_ddl(conn, """
             CREATE TABLE IF NOT EXISTS news_raw (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source TEXT,
@@ -49,11 +125,11 @@ def init_db():
                 fetched_at TEXT
             )
         """)
-        conn.execute("""
+        execute_ddl(conn, """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_news_dedup
             ON news_raw(source, headline, COALESCE(url, ''))
         """)
-        conn.execute("""
+        execute_ddl(conn, """
             CREATE TABLE IF NOT EXISTS intraday_candles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 symbol TEXT NOT NULL,
@@ -66,11 +142,11 @@ def init_db():
                 UNIQUE(symbol, timestamp_ist)    -- no duplicates on re-seed
             )
         """)
-        conn.execute("""
+        execute_ddl(conn, """
             CREATE INDEX IF NOT EXISTS idx_intraday_symbol_ts
             ON intraday_candles(symbol, timestamp_ist)
         """)
-        conn.execute("""
+        execute_ddl(conn, """
             CREATE TABLE IF NOT EXISTS predictions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT, predicted_direction TEXT,
@@ -83,15 +159,15 @@ def init_db():
         # In case the table already exists, try adding the column
         try:
             conn.execute("ALTER TABLE predictions ADD COLUMN source TEXT DEFAULT 'daily'")
-        except sqlite3.OperationalError:
+        except Exception:
             pass # Column likely already exists
 
         try:
             conn.execute("ALTER TABLE predictions ADD COLUMN resolved INTEGER DEFAULT 0")
-        except sqlite3.OperationalError:
+        except Exception:
             pass
 
-        conn.execute("""
+        execute_ddl(conn, """
             CREATE TABLE IF NOT EXISTS prediction_errors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 prediction_id INTEGER REFERENCES predictions(id),
@@ -99,7 +175,7 @@ def init_db():
                 direction_correct INTEGER, magnitude_error REAL, scored_at TEXT
             )
         """)
-        conn.execute("""
+        execute_ddl(conn, """
             CREATE TABLE IF NOT EXISTS agent_weights (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_name TEXT NOT NULL,
@@ -112,7 +188,7 @@ def init_db():
                 UNIQUE(agent_name)
             )
         """)
-        conn.execute("""
+        execute_ddl(conn, """
             CREATE TABLE IF NOT EXISTS weight_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_name TEXT NOT NULL,
@@ -123,10 +199,10 @@ def init_db():
         """)
         try:
             conn.execute("ALTER TABLE predictions ADD COLUMN agent_signals TEXT DEFAULT NULL")
-        except sqlite3.OperationalError:
+        except Exception:
             pass
 
-        conn.execute("""
+        execute_ddl(conn, """
             CREATE TABLE IF NOT EXISTS agent_signal_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 cycle_id TEXT NOT NULL,

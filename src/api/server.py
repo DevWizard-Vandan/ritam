@@ -12,6 +12,21 @@ from pathlib import Path
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+import os
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+import src.orchestrator.agent as orch_agent
+from src.data.db import get_connection
+
+SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[FastApiIntegration()],
+        traces_sample_rate=0.2,
+        environment=os.getenv("ENVIRONMENT", "development")
+    )
+
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
@@ -337,6 +352,23 @@ def get_intraday_stats():
         "resolution_mode": "intraday" if settings.USE_INTRADAY else "daily"
     }
 
+
+
+@app.get("/health")
+def health_check():
+    db_status = "connected"
+    try:
+        with get_connection() as conn:
+            conn.execute("SELECT 1").fetchall()
+    except Exception:
+        db_status = "error"
+    return {
+        "status": "ok",
+        "db": db_status,
+        "last_cycle": orch_agent.last_cycle_time,
+        "db_mode": os.getenv("DB_MODE", "sqlite"),
+        "version": "1.0.0"
+    }
 
 @app.get("/api/accuracy")
 def get_accuracy():
