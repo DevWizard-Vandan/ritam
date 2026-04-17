@@ -123,6 +123,10 @@ def weight_update_job():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from src.data.db import init_db
+    init_db()
+    logger.info("Database initialized on startup.")
+
     if settings.SCHEDULER_ENABLED:
         scheduler.add_job(
             run_scheduled_cycle,

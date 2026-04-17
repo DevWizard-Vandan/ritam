@@ -13,6 +13,19 @@ except ModuleNotFoundError:  # pragma: no cover - environment fallback
 DB_MODE = os.getenv("DB_MODE", "sqlite")
 PLACEHOLDER = "%s" if DB_MODE == "postgres" else "?"
 
+def insert_or_ignore(conn, query, params):
+    """
+    Executes an INSERT, ignoring duplicate key errors.
+    Handles both SQLite (INSERT OR IGNORE) and PostgreSQL
+    (INSERT ... ON CONFLICT DO NOTHING).
+    """
+    if DB_MODE == "postgres":
+        query = query.replace(
+            "INSERT OR IGNORE INTO",
+            "INSERT INTO"
+        ) + " ON CONFLICT DO NOTHING"
+    return conn.execute(query, params)
+
 class CursorWrapper:
     def __init__(self, cursor):
         self.cursor = cursor
@@ -127,7 +140,13 @@ def init_db():
         """)
         execute_ddl(conn, """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_news_dedup
-            ON news_raw(source, headline, COALESCE(url, ''))
+            ON news_raw(source, headline, url)
+            WHERE url IS NOT NULL
+        """)
+        execute_ddl(conn, """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_news_dedup_no_url
+            ON news_raw(source, headline)
+            WHERE url IS NULL
         """)
         execute_ddl(conn, """
             CREATE TABLE IF NOT EXISTS intraday_candles (
@@ -248,10 +267,24 @@ def init_db():
 def write_candles(symbol: str, candles: list[dict]):
     """Insert OHLCV candles, ignoring duplicates."""
     with get_connection() as conn:
-        conn.executemany("""
-            INSERT OR IGNORE INTO candles (symbol, timestamp_ist, open, high, low, close, volume)
-            VALUES (:symbol, :timestamp_ist, :open, :high, :low, :close, :volume)
-        """, [{"symbol": symbol, **c} for c in candles])
+        for record in [{"symbol": symbol, **c} for c in candles]:
+            insert_or_ignore(
+                conn,
+                """
+                INSERT OR IGNORE INTO candles
+                (symbol, timestamp_ist, open, high, low, close, volume)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record["symbol"],
+                    record["timestamp_ist"],
+                    record["open"],
+                    record["high"],
+                    record["low"],
+                    record["close"],
+                    record["volume"],
+                ),
+            )
         conn.commit()
 
 
@@ -261,12 +294,28 @@ def upsert_intraday_candles(symbol: str, candles: list[dict]) -> int:
     Each candle dict: {timestamp_ist, open, high, low, close, volume}
     """
     with get_connection() as conn:
-        cursor = conn.executemany("""
-            INSERT OR IGNORE INTO intraday_candles (symbol, timestamp_ist, open, high, low, close, volume)
-            VALUES (:symbol, :timestamp_ist, :open, :high, :low, :close, :volume)
-        """, [{"symbol": symbol, **c} for c in candles])
+        inserted_rows = 0
+        for record in [{"symbol": symbol, **c} for c in candles]:
+            cursor = insert_or_ignore(
+                conn,
+                """
+                INSERT OR IGNORE INTO intraday_candles
+                (symbol, timestamp_ist, open, high, low, close, volume)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record["symbol"],
+                    record["timestamp_ist"],
+                    record["open"],
+                    record["high"],
+                    record["low"],
+                    record["close"],
+                    record["volume"],
+                ),
+            )
+            inserted_rows += max(cursor.rowcount, 0)
         conn.commit()
-        return cursor.rowcount
+        return inserted_rows
 
 def read_intraday_candles(
     symbol: str,
@@ -370,10 +419,22 @@ def read_candles(symbol: str, from_date: str, to_date: str, limit: int = None) -
 def write_news_raw(records: list[dict]):
     """Insert raw news headline records, ignoring duplicate URLs."""
     with get_connection() as conn:
-        conn.executemany("""
-            INSERT OR IGNORE INTO news_raw (source, headline, url, published_at, fetched_at)
-            VALUES (:source, :headline, :url, :published_at, :fetched_at)
-        """, records)
+        for record in records:
+            insert_or_ignore(
+                conn,
+                """
+                INSERT OR IGNORE INTO news_raw
+                (source, headline, url, published_at, fetched_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    record["source"],
+                    record["headline"],
+                    record["url"],
+                    record["published_at"],
+                    record["fetched_at"],
+                ),
+            )
         conn.commit()
 
 def log_agent_signals(cycle_id: str, signals: list) -> None:
@@ -381,9 +442,8 @@ def log_agent_signals(cycle_id: str, signals: list) -> None:
     with get_connection() as conn:
         conn.executemany("""
             INSERT INTO agent_signal_log (cycle_id, agent_name, signal, confidence, reasoning)
-            VALUES (:cycle_id, :agent_name, :signal, :confidence, :reasoning)
-        """, [{"cycle_id": cycle_id, "agent_name": s.agent_name, "signal": s.signal,
-               "confidence": s.confidence, "reasoning": s.reasoning} for s in signals])
+            VALUES (?, ?, ?, ?, ?)
+        """, [(cycle_id, s.agent_name, s.signal, s.confidence, s.reasoning) for s in signals])
         conn.commit()
 
 
