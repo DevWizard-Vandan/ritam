@@ -1,15 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  CandlestickSeries,
-  LineSeries,
-  LineStyle,
-  createChart,
-  type CandlestickData,
-  type IChartApi,
-  type ISeriesApi,
-  type LineData,
-  type UTCTimestamp,
-} from 'lightweight-charts';
 import { useIntradayCandles, useLivePrediction } from '../hooks';
 import type { CandleData, PredictionData, PredictionZone } from '../types';
 
@@ -17,20 +6,6 @@ const CHART_HEIGHT = 390;
 const CLOCK_UPDATE_INTERVAL_MS = 30_000;
 const HIGH_CONFIDENCE_THRESHOLD = 70;
 const MEDIUM_CONFIDENCE_THRESHOLD = 40;
-
-function toUtcTimestamp(value: number): UTCTimestamp {
-  return value as UTCTimestamp;
-}
-
-function toChartCandle(candle: CandleData): CandlestickData<UTCTimestamp> {
-  return {
-    time: toUtcTimestamp(candle.time),
-    open: candle.open,
-    high: candle.high,
-    low: candle.low,
-    close: candle.close,
-  };
-}
 
 function normalizeDirection(direction: string): PredictionZone['direction'] {
   const normalized = direction.toLowerCase();
@@ -81,12 +56,25 @@ function confidenceClass(confidencePct: number): string {
   return 'bg-red-500';
 }
 
+function createYScale(candles: CandleData[], padding = 0.05): { min: number; max: number } {
+  if (candles.length === 0) return { min: 0, max: 1 };
+  const low = Math.min(...candles.map((candle) => candle.low));
+  const high = Math.max(...candles.map((candle) => candle.high));
+  const span = Math.max(high - low, 1e-6);
+  return {
+    min: low - span * padding,
+    max: high + span * padding,
+  };
+}
+
+function scaleY(value: number, min: number, max: number, height: number): number {
+  const ratio = (value - min) / (max - min);
+  return height - ratio * height;
+}
+
 export default function PredictionChart() {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const zoneSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const lastCandleTimeRef = useRef<number | null>(null);
+  const chartRef = useRef<HTMLDivElement | null>(null);
+  const [chartWidth, setChartWidth] = useState(900);
   const [now, setNow] = useState(() => new Date());
 
   const { candles, loading, error } = useIntradayCandles(50);
@@ -95,6 +83,17 @@ export default function PredictionChart() {
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), CLOCK_UPDATE_INTERVAL_MS);
     return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!chartRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      setChartWidth(Math.max(320, Math.floor(entry.contentRect.width)));
+    });
+    observer.observe(chartRef.current);
+    return () => observer.disconnect();
   }, []);
 
   const preMarket = useMemo(() => isPreMarket(now), [now]);
@@ -106,135 +105,28 @@ export default function PredictionChart() {
 
   const confidencePct = Math.round((predictionZone?.confidence ?? 0) * 100);
   const regimeBadge = getRegimeBadge(predictionZone?.regime ?? 'ranging');
+  const yScale = createYScale(candles);
+  const candleGap = candles.length > 1 ? (chartWidth - 24) / candles.length : chartWidth - 24;
+  const candleBodyWidth = Math.max(2, Math.floor(candleGap * 0.55));
 
-  useEffect(() => {
-    if (!containerRef.current || chartRef.current) return;
-
-    const chart = createChart(containerRef.current, {
-      width: containerRef.current.clientWidth,
-      height: CHART_HEIGHT,
-      layout: {
-        background: { color: '#0A0F1E' },
-        textColor: '#D6E0F0',
-        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-      },
-      grid: {
-        vertLines: { color: '#1E293B' },
-        horzLines: { color: '#1E293B' },
-      },
-      crosshair: {
-        vertLine: { visible: true },
-        horzLine: { visible: true },
-      },
-      timeScale: {
-        borderColor: '#1E293B',
-        timeVisible: true,
-        secondsVisible: false,
-      },
-      rightPriceScale: {
-        borderColor: '#1E293B',
-      },
-      localization: {
-        locale: 'en-IN',
-        timeFormatter: (time: UTCTimestamp) => {
-          const date = new Date(Number(time) * 1000);
-          return date.toLocaleString('en-IN', {
-            timeZone: 'Asia/Kolkata',
-            hour: '2-digit',
-            minute: '2-digit',
-            day: '2-digit',
-            month: 'short',
-            hour12: false,
-          });
-        },
-      },
-    });
-
-    const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#22C55E',
-      downColor: '#EF4444',
-      wickUpColor: '#22C55E',
-      wickDownColor: '#EF4444',
-      borderUpColor: '#22C55E',
-      borderDownColor: '#EF4444',
-      priceLineVisible: false,
-    });
-
-    const zoneSeries = chart.addSeries(LineSeries, {
-      color: '#94A3B8',
-      lineWidth: 2,
-      lineStyle: LineStyle.Dashed,
-      priceLineVisible: false,
-      lastValueVisible: false,
-      crosshairMarkerVisible: false,
-    });
-
-    chartRef.current = chart;
-    candleSeriesRef.current = candleSeries;
-    zoneSeriesRef.current = zoneSeries;
-
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry || !chartRef.current) return;
-      chartRef.current.applyOptions({ width: entry.contentRect.width });
-    });
-    observer.observe(containerRef.current);
-
-    return () => {
-      observer.disconnect();
-      chart.remove();
-      chartRef.current = null;
-      candleSeriesRef.current = null;
-      zoneSeriesRef.current = null;
-      lastCandleTimeRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    const candleSeries = candleSeriesRef.current;
-    if (!candleSeries || candles.length === 0) return;
-
-    const lastRenderedTime = lastCandleTimeRef.current;
-    if (lastRenderedTime === null) {
-      candleSeries.setData(candles.map(toChartCandle));
-      lastCandleTimeRef.current = candles[candles.length - 1].time;
-      chartRef.current?.timeScale().fitContent();
-      return;
-    }
-
-    const updates = candles.filter((candle) => candle.time >= lastRenderedTime);
-    if (updates.length === 0) return;
-
-    for (const candle of updates) {
-      candleSeries.update(toChartCandle(candle));
-    }
-    lastCandleTimeRef.current = candles[candles.length - 1].time;
-  }, [candles]);
-
-  useEffect(() => {
-    const zoneSeries = zoneSeriesRef.current;
-    if (!zoneSeries || !lastCandle || !predictionZone) return;
-
-    const movePct = prediction?.predicted_move_pct ?? 0;
-    const direction = predictionZone.direction;
-    const targetPrice =
-      direction === 'HOLD'
+  const movePct = prediction?.predicted_move_pct ?? 0;
+  const targetPrice =
+    !lastCandle || !predictionZone
+      ? null
+      : predictionZone.direction === 'HOLD'
         ? lastCandle.close
         : movePct !== 0
           ? lastCandle.close * (1 + movePct / 100)
-          : direction === 'BUY'
+          : predictionZone.direction === 'BUY'
             ? lastCandle.close * 1.001
             : lastCandle.close * 0.999;
 
-    const color = direction === 'BUY' ? '#22C55E' : direction === 'SELL' ? '#EF4444' : '#94A3B8';
-    zoneSeries.applyOptions({ color, lineStyle: LineStyle.Dashed });
-
-    const zoneData: LineData<UTCTimestamp>[] = [
-      { time: toUtcTimestamp(lastCandle.time), value: lastCandle.close },
-      { time: toUtcTimestamp(predictionZone.target_time), value: targetPrice },
-    ];
-    zoneSeries.setData(zoneData);
-  }, [lastCandle, prediction, predictionZone]);
+  const zoneColor =
+    predictionZone?.direction === 'BUY'
+      ? '#22C55E'
+      : predictionZone?.direction === 'SELL'
+        ? '#EF4444'
+        : '#94A3B8';
 
   return (
     <section className="w-full h-[480px] rounded-xl border border-[#1E293B] bg-[#0A0F1E] p-4 sm:p-5">
@@ -253,7 +145,58 @@ export default function PredictionChart() {
         </p>
       )}
 
-      <div ref={containerRef} className="w-full rounded-lg overflow-hidden" style={{ height: `${CHART_HEIGHT}px` }} />
+      <div ref={chartRef} className="w-full rounded-lg overflow-hidden border border-[#1E293B]" style={{ height: `${CHART_HEIGHT}px` }}>
+        <svg width="100%" height={CHART_HEIGHT} viewBox={`0 0 ${chartWidth} ${CHART_HEIGHT}`} preserveAspectRatio="none">
+          <rect x={0} y={0} width={chartWidth} height={CHART_HEIGHT} fill="#0A0F1E" />
+          {[0.2, 0.4, 0.6, 0.8].map((ratio) => (
+            <line
+              key={ratio}
+              x1={0}
+              y1={CHART_HEIGHT * ratio}
+              x2={chartWidth}
+              y2={CHART_HEIGHT * ratio}
+              stroke="#1E293B"
+              strokeWidth={1}
+            />
+          ))}
+
+          {candles.map((candle, index) => {
+            const x = 12 + index * candleGap + candleGap / 2;
+            const openY = scaleY(candle.open, yScale.min, yScale.max, CHART_HEIGHT);
+            const closeY = scaleY(candle.close, yScale.min, yScale.max, CHART_HEIGHT);
+            const highY = scaleY(candle.high, yScale.min, yScale.max, CHART_HEIGHT);
+            const lowY = scaleY(candle.low, yScale.min, yScale.max, CHART_HEIGHT);
+            const isUp = candle.close >= candle.open;
+            const color = isUp ? '#22C55E' : '#EF4444';
+            return (
+              <g key={candle.time}>
+                <line x1={x} y1={highY} x2={x} y2={lowY} stroke={color} strokeWidth={1.2} />
+                <rect
+                  x={x - candleBodyWidth / 2}
+                  y={Math.min(openY, closeY)}
+                  width={candleBodyWidth}
+                  height={Math.max(1.5, Math.abs(closeY - openY))}
+                  fill={color}
+                  opacity={0.95}
+                  rx={1}
+                />
+              </g>
+            );
+          })}
+
+          {lastCandle && predictionZone && targetPrice !== null && (
+            <line
+              x1={12 + (candles.length - 0.5) * candleGap}
+              y1={scaleY(lastCandle.close, yScale.min, yScale.max, CHART_HEIGHT)}
+              x2={Math.min(chartWidth - 8, 12 + (candles.length + 2.5) * candleGap)}
+              y2={scaleY(targetPrice, yScale.min, yScale.max, CHART_HEIGHT)}
+              stroke={zoneColor}
+              strokeWidth={2}
+              strokeDasharray="6 5"
+            />
+          )}
+        </svg>
+      </div>
 
       <div className="mt-3">
         <div className="flex items-center justify-between text-xs text-ash mb-1">

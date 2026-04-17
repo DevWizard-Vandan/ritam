@@ -5,6 +5,7 @@ import AnalogPanel from './components/AnalogPanel';
 import ExplanationPanel from './components/ExplanationPanel';
 import AgentWeightsPanel from './components/AgentWeightsPanel';
 import PredictionChart from './components/PredictionChart';
+import SandboxPanel from './components/SandboxPanel';
 
 function useCurrentTime() {
   const [time, setTime] = useState(new Date());
@@ -28,6 +29,7 @@ function isMarketHours(now: Date): boolean {
 export default function App() {
   const now = useCurrentTime();
   const marketOpen = isMarketHours(now);
+  const [activeTab, setActiveTab] = useState<'live' | 'sandbox'>('live');
 
   const timeStr = now.toLocaleTimeString('en-IN', {
     timeZone: 'Asia/Kolkata',
@@ -85,37 +87,66 @@ export default function App() {
 
       {/* ── Main Dashboard Grid ── */}
       <main className="flex-1 max-w-[1600px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 auto-rows-min">
-          {/* Prediction Chart — full-width top row */}
-          <div className="lg:col-span-12 lg:row-span-1">
-            <PredictionChart />
-          </div>
-
-          {/* Signal Panel — top center, spans 7 cols on large screens */}
-          <div className="lg:col-span-7 lg:row-span-1">
-            <SignalPanel />
-          </div>
-
-          {/* Accuracy Panel — top right, spans 5 cols */}
-          <div className="lg:col-span-5 lg:row-span-1">
-            <AccuracyPanel />
-          </div>
-
-          {/* Analog Panel — bottom left, spans 5 cols */}
-          <div className="lg:col-span-5 lg:row-span-1">
-            <AnalogPanel />
-          </div>
-
-          {/* Explanation Panel — bottom right, spans 7 cols */}
-          <div className="lg:col-span-7 lg:row-span-1">
-            <ExplanationPanel />
-          </div>
-
-          {/* Agent Weights Panel — full width bottom row */}
-          <div className="lg:col-span-12 lg:row-span-1">
-            <AgentWeightsPanel />
-          </div>
+        <div className="flex flex-row gap-2 mb-6">
+          <button
+            type="button"
+            onClick={() => setActiveTab('live')}
+            className={`px-4 py-2 rounded-full transition-opacity hover:opacity-85 ${
+              activeTab === 'live'
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-800 text-slate-400'
+            }`}
+          >
+            📈 Live
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('sandbox')}
+            className={`px-4 py-2 rounded-full transition-opacity hover:opacity-85 ${
+              activeTab === 'sandbox'
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-800 text-slate-400'
+            }`}
+          >
+            🧪 Sandbox
+          </button>
         </div>
+
+        {activeTab === 'live' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 auto-rows-min">
+            {/* Prediction Chart — full-width top row */}
+            <div className="lg:col-span-12 lg:row-span-1">
+              <PredictionChart />
+            </div>
+
+            {/* Signal Panel — top center, spans 7 cols on large screens */}
+            <div className="lg:col-span-7 lg:row-span-1">
+              <SignalPanel />
+            </div>
+
+            {/* Accuracy Panel — top right, spans 5 cols */}
+            <div className="lg:col-span-5 lg:row-span-1">
+              <AccuracyPanel />
+            </div>
+
+            {/* Analog Panel — bottom left, spans 5 cols */}
+            <div className="lg:col-span-5 lg:row-span-1">
+              <AnalogPanel />
+            </div>
+
+            {/* Explanation Panel — bottom right, spans 7 cols */}
+            <div className="lg:col-span-7 lg:row-span-1">
+              <ExplanationPanel />
+            </div>
+
+            {/* Agent Weights Panel — full width bottom row */}
+            <div className="lg:col-span-12 lg:row-span-1">
+              <AgentWeightsPanel />
+            </div>
+          </div>
+        ) : (
+          <SandboxPanel />
+        )}
       </main>
 
       {/* ── Footer ── */}
