@@ -46,7 +46,7 @@ class CursorWrapper:
         try:
             self.lastrowid = self.cursor.lastrowid
         except Exception:
-            pass # postgres doesn't support lastrowid out of the box in the same way
+            pass
         return self
 
     def executemany(self, query, params):
@@ -98,18 +98,209 @@ else:
         os.makedirs(os.path.dirname(settings.DB_PATH), exist_ok=True)
         return sqlite3.connect(settings.DB_PATH)
 
-def execute_ddl(conn, query):
+
+def _pg_ddl(query: str) -> str:
+    """Transform SQLite DDL to PostgreSQL-compatible DDL."""
+    query = query.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+    query = query.replace("(datetime('now'))", "CURRENT_TIMESTAMP")
+    query = query.replace("WITHOUT ROWID", "")
+    return query
+
+
+def _run_ddl_safe(raw_conn, query: str):
+    """
+    Run a single DDL statement safely.
+    On PostgreSQL: uses autocommit so a failure doesn't poison
+    the transaction block for subsequent statements.
+    On SQLite: runs normally.
+    """
     if DB_MODE == "postgres":
-        query = query.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
-        query = query.replace("(datetime('now'))", "CURRENT_TIMESTAMP")
-        query = query.replace("WITHOUT ROWID", "")
-    conn.execute(query)
+        query = _pg_ddl(query)
+        old_autocommit = raw_conn.autocommit
+        raw_conn.autocommit = True
+        try:
+            cur = raw_conn.cursor()
+            cur.execute(query)
+            cur.close()
+        except Exception as e:
+            logger.warning(f"DDL skipped (likely already exists): {e}")
+        finally:
+            raw_conn.autocommit = old_autocommit
+    else:
+        raw_conn.execute(query)
+
+
+def execute_ddl(conn, query):
+    """Legacy helper kept for compatibility — wraps _run_ddl_safe."""
+    if DB_MODE == "postgres":
+        query = _pg_ddl(query)
+        raw = conn.conn  # unwrap ConnectionWrapper
+        old_autocommit = raw.autocommit
+        raw.autocommit = True
+        try:
+            cur = raw.cursor()
+            cur.execute(query)
+            cur.close()
+        except Exception as e:
+            logger.warning(f"DDL skipped (likely already exists): {e}")
+        finally:
+            raw.autocommit = old_autocommit
+    else:
+        conn.execute(query)
 
 
 def init_db():
     """Create tables if they do not exist."""
-    with get_connection() as conn:
-        execute_ddl(conn, """
+    if DB_MODE == "postgres":
+        import psycopg2
+        raw_conn = psycopg2.connect(DATABASE_URL)
+        ddl_statements = [
+            """
+            CREATE TABLE IF NOT EXISTS candles (
+                id SERIAL PRIMARY KEY,
+                symbol TEXT NOT NULL,
+                timestamp_ist TEXT NOT NULL,
+                open REAL, high REAL, low REAL, close REAL, volume INTEGER,
+                UNIQUE(symbol, timestamp_ist)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS headlines (
+                id SERIAL PRIMARY KEY,
+                source TEXT,
+                headline TEXT NOT NULL,
+                url TEXT UNIQUE,
+                published_at TEXT,
+                fetched_at TEXT
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS news_raw (
+                id SERIAL PRIMARY KEY,
+                source TEXT,
+                headline TEXT NOT NULL,
+                url TEXT UNIQUE,
+                published_at TEXT,
+                fetched_at TEXT
+            )
+            """,
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_news_dedup
+            ON news_raw(source, headline, url)
+            WHERE url IS NOT NULL
+            """,
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_news_dedup_no_url
+            ON news_raw(source, headline)
+            WHERE url IS NULL
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS intraday_candles (
+                id SERIAL PRIMARY KEY,
+                symbol TEXT NOT NULL,
+                timestamp_ist TEXT NOT NULL,
+                open REAL NOT NULL,
+                high REAL NOT NULL,
+                low REAL NOT NULL,
+                close REAL NOT NULL,
+                volume INTEGER NOT NULL,
+                UNIQUE(symbol, timestamp_ist)
+            )
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS idx_intraday_symbol_ts
+            ON intraday_candles(symbol, timestamp_ist)
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS predictions (
+                id SERIAL PRIMARY KEY,
+                timestamp TEXT, predicted_direction TEXT,
+                predicted_move_pct REAL, confidence REAL,
+                timeframe_minutes INTEGER, regime TEXT,
+                source TEXT DEFAULT 'daily',
+                resolved INTEGER DEFAULT 0,
+                agent_signals TEXT DEFAULT NULL
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS prediction_errors (
+                id SERIAL PRIMARY KEY,
+                prediction_id INTEGER REFERENCES predictions(id),
+                actual_direction TEXT, actual_move_pct REAL,
+                direction_correct INTEGER, magnitude_error REAL, scored_at TEXT
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS agent_weights (
+                id SERIAL PRIMARY KEY,
+                agent_name TEXT NOT NULL,
+                weight REAL NOT NULL DEFAULT 0.10,
+                accuracy_7d REAL,
+                accuracy_30d REAL,
+                total_predictions INT DEFAULT 0,
+                correct_predictions INT DEFAULT 0,
+                last_updated TEXT,
+                UNIQUE(agent_name)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS weight_history (
+                id SERIAL PRIMARY KEY,
+                agent_name TEXT NOT NULL,
+                weight REAL NOT NULL,
+                accuracy_7d REAL,
+                recorded_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS agent_signal_log (
+                id SERIAL PRIMARY KEY,
+                cycle_id TEXT NOT NULL,
+                agent_name TEXT NOT NULL,
+                signal INTEGER NOT NULL,
+                confidence REAL NOT NULL,
+                reasoning TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS paper_trades (
+                id SERIAL PRIMARY KEY,
+                signal TEXT,
+                entry_price REAL,
+                entry_time TEXT,
+                exit_price REAL,
+                exit_time TEXT,
+                pnl REAL,
+                outcome TEXT,
+                sharpe_contribution REAL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS sandbox_runs (
+                id SERIAL PRIMARY KEY,
+                condition TEXT,
+                date TEXT,
+                data_source TEXT,
+                regime TEXT,
+                narrative TEXT,
+                confidence REAL,
+                result_json TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+        ]
+        for stmt in ddl_statements:
+            _run_ddl_safe(raw_conn, stmt)
+        raw_conn.close()
+    else:
+        # SQLite path — single transaction is fine
+        import sqlite3
+        conn = sqlite3.connect(settings.DB_PATH)
+        os.makedirs(os.path.dirname(settings.DB_PATH), exist_ok=True)
+        stmts = [
+            """
             CREATE TABLE IF NOT EXISTS candles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 symbol TEXT NOT NULL,
@@ -117,8 +308,8 @@ def init_db():
                 open REAL, high REAL, low REAL, close REAL, volume INTEGER,
                 UNIQUE(symbol, timestamp_ist)
             )
-        """)
-        execute_ddl(conn, """
+            """,
+            """
             CREATE TABLE IF NOT EXISTS headlines (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source TEXT,
@@ -127,8 +318,8 @@ def init_db():
                 published_at TEXT,
                 fetched_at TEXT
             )
-        """)
-        execute_ddl(conn, """
+            """,
+            """
             CREATE TABLE IF NOT EXISTS news_raw (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source TEXT,
@@ -137,91 +328,76 @@ def init_db():
                 published_at TEXT,
                 fetched_at TEXT
             )
-        """)
-        execute_ddl(conn, """
+            """,
+            """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_news_dedup
             ON news_raw(source, headline, url)
             WHERE url IS NOT NULL
-        """)
-        execute_ddl(conn, """
+            """,
+            """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_news_dedup_no_url
             ON news_raw(source, headline)
             WHERE url IS NULL
-        """)
-        execute_ddl(conn, """
+            """,
+            """
             CREATE TABLE IF NOT EXISTS intraday_candles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 symbol TEXT NOT NULL,
-                timestamp_ist TEXT NOT NULL,     -- ISO8601 "2026-04-14T09:15:00+05:30"
+                timestamp_ist TEXT NOT NULL,
                 open REAL NOT NULL,
                 high REAL NOT NULL,
                 low REAL NOT NULL,
                 close REAL NOT NULL,
                 volume INTEGER NOT NULL,
-                UNIQUE(symbol, timestamp_ist)    -- no duplicates on re-seed
+                UNIQUE(symbol, timestamp_ist)
             )
-        """)
-        execute_ddl(conn, """
+            """,
+            """
             CREATE INDEX IF NOT EXISTS idx_intraday_symbol_ts
             ON intraday_candles(symbol, timestamp_ist)
-        """)
-        execute_ddl(conn, """
+            """,
+            """
             CREATE TABLE IF NOT EXISTS predictions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT, predicted_direction TEXT,
                 predicted_move_pct REAL, confidence REAL,
                 timeframe_minutes INTEGER, regime TEXT,
-                source TEXT DEFAULT 'daily'
+                source TEXT DEFAULT 'daily',
+                resolved INTEGER DEFAULT 0,
+                agent_signals TEXT DEFAULT NULL
             )
-        """)
-
-        # In case the table already exists, try adding the column
-        try:
-            conn.execute("ALTER TABLE predictions ADD COLUMN source TEXT DEFAULT 'daily'")
-        except Exception:
-            pass # Column likely already exists
-
-        try:
-            conn.execute("ALTER TABLE predictions ADD COLUMN resolved INTEGER DEFAULT 0")
-        except Exception:
-            pass
-
-        execute_ddl(conn, """
+            """,
+            """
             CREATE TABLE IF NOT EXISTS prediction_errors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 prediction_id INTEGER REFERENCES predictions(id),
                 actual_direction TEXT, actual_move_pct REAL,
                 direction_correct INTEGER, magnitude_error REAL, scored_at TEXT
             )
-        """)
-        execute_ddl(conn, """
+            """,
+            """
             CREATE TABLE IF NOT EXISTS agent_weights (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_name TEXT NOT NULL,
                 weight REAL NOT NULL DEFAULT 0.10,
-                accuracy_7d REAL,           -- rolling 7-day accuracy (0.0–1.0)
-                accuracy_30d REAL,          -- rolling 30-day accuracy
+                accuracy_7d REAL,
+                accuracy_30d REAL,
                 total_predictions INT DEFAULT 0,
                 correct_predictions INT DEFAULT 0,
-                last_updated TEXT,          -- ISO8601 timestamp
+                last_updated TEXT,
                 UNIQUE(agent_name)
             )
-        """)
-        execute_ddl(conn, """
+            """,
+            """
             CREATE TABLE IF NOT EXISTS weight_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_name TEXT NOT NULL,
                 weight REAL NOT NULL,
                 accuracy_7d REAL,
-                recorded_at TEXT NOT NULL   -- ISO8601 timestamp
+                recorded_at TEXT NOT NULL
             )
-        """)
-        try:
-            conn.execute("ALTER TABLE predictions ADD COLUMN agent_signals TEXT DEFAULT NULL")
-        except Exception:
-            pass
-
-        execute_ddl(conn, """
+            """,
+            """
             CREATE TABLE IF NOT EXISTS agent_signal_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 cycle_id TEXT NOT NULL,
@@ -231,9 +407,8 @@ def init_db():
                 reasoning TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
-        """)
-
-        conn.execute('''
+            """,
+            """
             CREATE TABLE IF NOT EXISTS paper_trades (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 signal TEXT,
@@ -246,8 +421,8 @@ def init_db():
                 sharpe_contribution REAL,
                 created_at TEXT DEFAULT (datetime('now'))
             )
-        ''')
-        conn.execute('''
+            """,
+            """
             CREATE TABLE IF NOT EXISTS sandbox_runs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 condition TEXT,
@@ -259,8 +434,15 @@ def init_db():
                 result_json TEXT,
                 created_at TEXT DEFAULT (datetime('now'))
             )
-        ''')
+            """,
+        ]
+        for stmt in stmts:
+            try:
+                conn.execute(stmt)
+            except Exception as e:
+                logger.warning(f"DDL skipped: {e}")
         conn.commit()
+        conn.close()
     logger.info("Database initialized")
 
 
@@ -377,20 +559,7 @@ def get_latest_intraday_timestamp(symbol: str) -> str | None:
 
 
 def read_candles(symbol: str, from_date: str, to_date: str, limit: int = None) -> list[dict]:
-    """Read OHLCV candles for a symbol between two ISO date strings.
-
-    Args:
-        symbol: Instrument identifier (e.g. ``"NSE:NIFTY 50"``).
-        from_date: ISO-8601 datetime string for the start of the range (inclusive).
-        to_date:   ISO-8601 datetime string for the end of the range (inclusive).
-        limit:     When provided, return only the most-recent *limit* candles
-                   within the date range, ordered ascending by timestamp.
-                   Must be a positive integer; raises ``ValueError`` otherwise.
-
-    Returns:
-        List of candle dicts with keys:
-        ``timestamp_ist``, ``open``, ``high``, ``low``, ``close``, ``volume``.
-    """
+    """Read OHLCV candles for a symbol between two ISO date strings."""
     if limit is not None:
         if not isinstance(limit, int) or limit <= 0:
             raise ValueError(f"limit must be a positive integer, got {limit!r}")
@@ -478,19 +647,11 @@ def upsert_agent_weight(
         conn.commit()
 
 def get_agent_weights() -> dict[str, float]:
-    """
-    Returns {agent_name: weight} for all agents.
-    If no row exists for an agent, caller uses hardcoded default.
-    """
     with get_connection() as conn:
         rows = conn.execute("SELECT agent_name, weight FROM agent_weights").fetchall()
     return {row[0]: row[1] for row in rows}
 
 def get_agent_accuracy_stats() -> list[dict]:
-    """
-    Returns full stats rows for all agents.
-    Used in /api/agents/stats endpoint.
-    """
     with get_connection() as conn:
         rows = conn.execute("SELECT agent_name, weight, accuracy_7d, accuracy_30d, total_predictions, correct_predictions, last_updated FROM agent_weights").fetchall()
     return [
@@ -550,7 +711,6 @@ def read_paper_trades(limit: int = 100) -> list[dict]:
         }
         for r in rows
     ]
-
 
 
 def insert_sandbox_run(
