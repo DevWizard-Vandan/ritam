@@ -12,19 +12,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Download FinBERT at build time so it's baked into the image.
-# This prevents a ~400MB download on every cold start which causes
-# OOM / 503 errors on Render's free tier.
-RUN python - <<'EOF'
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-import os
-path = "models/finbert"
-os.makedirs(path, exist_ok=True)
-AutoTokenizer.from_pretrained("ProsusAI/finbert").save_pretrained(path)
-AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert").save_pretrained(path)
-print("FinBERT baked into image at", path)
-EOF
-
 # Default port
 EXPOSE 8000
 
