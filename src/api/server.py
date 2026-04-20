@@ -50,13 +50,11 @@ def run_scheduled_cycle():
     import datetime as dt
     now = dt.datetime.now(dt.timezone(dt.timedelta(hours=5, minutes=30)))
 
-    # Check if Mon-Fri
     if now.weekday() > 4:
         logger.info("Market closed — skipping cycle")
         scheduler_job_status["market_cycle"] = "skipped"
         return
 
-    # Check market hours
     open_time = dt.datetime.strptime(settings.MARKET_OPEN_TIME, "%H:%M").time()
     close_time = dt.datetime.strptime(settings.MARKET_CLOSE_TIME, "%H:%M").time()
 
@@ -76,7 +74,6 @@ def run_scheduled_cycle():
             scheduler_job_status["market_cycle"] = "failed"
             return
 
-        # Compute price_change_pct for the most recent candle from the preceding close.
         last_candle = dict(candles[-1])
         if len(candles) >= 2:
             prev_close = candles[-2]["close"]
@@ -114,10 +111,7 @@ def weight_update_job():
     try:
         from src.learning.weight_updater import run_weight_update
         result = run_weight_update()
-        logger.info(
-            f"Weight update complete: "
-            f"{len(result['agents'])} agents updated"
-        )
+        logger.info(f"Weight update complete: {len(result['agents'])} agents updated")
         scheduler_job_status["weight_updater"] = "success"
     except Exception as e:
         logger.error(f"Weight update failed: {e}", exc_info=True)
@@ -228,10 +222,11 @@ import dataclasses
 import json
 
 # ---------------------------------------------------------------------------
-# Seed endpoint — triggers daily + intraday data pull without needing a shell
+# Seed endpoint — triggers daily + intraday data pull without needing a shell.
 # Secured by SEED_SECRET env var. Set it once in Render dashboard.
-# Usage: curl -X POST https://ritam-api.onrender.com/api/seed \
-#             -H "x-seed-secret: <your-secret>"
+# Usage (PowerShell):
+#   iwr -Uri https://ritam-api.onrender.com/api/seed -Method POST `
+#       -Headers @{"x-seed-secret"="<your-secret>"}
 # ---------------------------------------------------------------------------
 @app.post("/api/seed")
 def trigger_seed(x_seed_secret: str = Header(default="")):
@@ -245,11 +240,10 @@ def trigger_seed(x_seed_secret: str = Header(default="")):
 
     results = {}
 
-    # 1. Daily candles
+    # 1. Daily candles via fetch_historical_candles()
     try:
-        from src.data.kite_feed import KiteFeed
-        feed = KiteFeed()
-        n = feed.seed_historical()
+        from src.data.kite_feed import fetch_historical_candles
+        n = fetch_historical_candles()
         results["daily_candles"] = {"status": "ok", "inserted": n}
     except Exception as e:
         logger.error(f"Daily seed failed: {e}", exc_info=True)
@@ -361,7 +355,6 @@ def get_candles(symbol: str = "NSE:NIFTY 50", limit: int = 100):
     import pytz
     ist = timezone(settings.TIMEZONE)
     now = datetime.now(ist).isoformat()
-    # Use a wide date range — DB will return sorted by timestamp
     candles = read_candles(symbol, "2000-01-01", now)
     return {"symbol": symbol, "candles": candles[-limit:]}
 
@@ -369,26 +362,18 @@ def get_candles(symbol: str = "NSE:NIFTY 50", limit: int = 100):
 @app.get("/api/intraday/candles")
 def get_intraday_candles(symbol: str = "NSE:NIFTY 50", limit: int = 50):
     from src.data.db import read_intraday_candles
-
     limit = min(max(limit, 1), 200)
     candles = read_intraday_candles(symbol, limit=limit)
-    return {
-        "symbol": symbol,
-        "count": len(candles),
-        "candles": candles
-    }
+    return {"symbol": symbol, "count": len(candles), "candles": candles}
 
 @app.get("/api/intraday/stats")
 def get_intraday_stats():
     from src.data.db import read_intraday_candles, get_latest_intraday_timestamp
-
     symbol = settings.INTRADAY_SYMBOL
     candles = read_intraday_candles(symbol)
-
     total = len(candles)
     earliest = candles[0]["timestamp_ist"] if total > 0 else None
     latest = get_latest_intraday_timestamp(symbol)
-
     return {
         "symbol": symbol,
         "total_candles": total,
@@ -397,7 +382,6 @@ def get_intraday_stats():
         "last_sync": latest,
         "resolution_mode": "intraday" if settings.USE_INTRADAY else "daily"
     }
-
 
 
 @app.get("/health")
@@ -429,7 +413,6 @@ def get_accuracy():
 
 @app.get("/api/agents")
 def get_agent_info():
-    import os
     weights_path = "config/agent_weights.json"
     if os.path.exists(weights_path):
         with open(weights_path) as f:
@@ -442,43 +425,29 @@ def get_agents_stats():
     from src.data.db import get_agent_accuracy_stats
     import pytz
     from datetime import datetime, timezone, timedelta
-
     try:
         ist = pytz.timezone("Asia/Kolkata")
         now = datetime.now(ist).isoformat()
     except ImportError:
         ist = timezone(timedelta(hours=5, minutes=30))
         now = datetime.now(ist).isoformat()
-
-    return {
-        "updated_at": now,
-        "agents": get_agent_accuracy_stats()
-    }
+    return {"updated_at": now, "agents": get_agent_accuracy_stats()}
 
 
 @app.get("/api/weights/history")
 def get_weights_history(agent: str, limit: int = 10):
-    from src.data.db import get_connection
     with get_connection() as conn:
         rows = conn.execute(
             "SELECT weight, accuracy_7d, recorded_at FROM weight_history WHERE agent_name = ? ORDER BY recorded_at DESC LIMIT ?",
             (agent, limit)
         ).fetchall()
-    return [
-        {
-            "weight": row[0],
-            "accuracy_7d": row[1],
-            "recorded_at": row[2]
-        }
-        for row in rows
-    ]
+    return [{"weight": row[0], "accuracy_7d": row[1], "recorded_at": row[2]} for row in rows]
 
 
 @app.post("/api/weights/update")
 def trigger_weight_update():
     from src.learning.weight_updater import run_weight_update
     return run_weight_update()
-
 
 
 @app.get("/api/paper/trades")
@@ -498,7 +467,6 @@ def get_latest_backtest():
     reports_dir = Path("reports")
     reports_dir.mkdir(parents=True, exist_ok=True)
     html_reports = sorted(reports_dir.glob("backtest_*.html"), key=lambda p: p.stat().st_mtime)
-
     if html_reports:
         latest = html_reports[-1]
         content = latest.read_text(encoding="utf-8")
@@ -509,9 +477,7 @@ def get_latest_backtest():
             start_idx += len(start_tag)
             end_idx = content.find(end_tag, start_idx)
             if end_idx != -1:
-                payload = content[start_idx:end_idx].strip()
-                return json.loads(payload)
-
+                return json.loads(content[start_idx:end_idx].strip())
     now = datetime.utcnow()
     from_date = (now - dt.timedelta(days=90)).date().isoformat()
     to_date = now.date().isoformat()
@@ -524,7 +490,6 @@ async def websocket_endpoint(websocket: WebSocket):
     logger.info("Dashboard client connected")
     try:
         while True:
-            # Pull latest prediction from DB and broadcast
             with get_connection() as conn:
                 row = conn.execute(
                     "SELECT * FROM predictions ORDER BY id DESC LIMIT 1"
