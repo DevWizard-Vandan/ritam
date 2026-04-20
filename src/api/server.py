@@ -123,6 +123,16 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database initialized on startup.")
 
+    # Pre-warm FinBERT so it's loaded into RAM before the first scheduler
+    # cycle fires. Without this, the cold-load during a cycle spikes RAM and
+    # crashes the process on Render's free tier, causing an OOM restart loop.
+    try:
+        from src.sentiment.scorer import _load_pipeline
+        _load_pipeline()
+        logger.info("FinBERT pre-warmed successfully.")
+    except Exception as e:
+        logger.warning(f"FinBERT pre-warm failed (non-fatal): {e}")
+
     if settings.SCHEDULER_ENABLED:
         scheduler.add_job(
             run_scheduled_cycle,
@@ -221,26 +231,15 @@ from src.data.db import insert_sandbox_run, read_sandbox_runs
 import dataclasses
 import json
 
-# ---------------------------------------------------------------------------
-# Seed endpoint — triggers daily + intraday data pull without needing a shell.
-# Secured by SEED_SECRET env var. Set it once in Render dashboard.
-# Usage (PowerShell):
-#   iwr -Uri https://ritam-api.onrender.com/api/seed -Method POST `
-#       -Headers @{"x-seed-secret"="<your-secret>"}
-# ---------------------------------------------------------------------------
 @app.post("/api/seed")
 def trigger_seed(x_seed_secret: str = Header(default="")):
     if not SEED_SECRET:
-        raise HTTPException(
-            status_code=500,
-            detail="SEED_SECRET env var not configured on server."
-        )
+        raise HTTPException(status_code=500, detail="SEED_SECRET env var not configured on server.")
     if x_seed_secret != SEED_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     results = {}
 
-    # 1. Daily candles via fetch_historical_candles()
     try:
         from src.data.kite_feed import fetch_historical_candles
         n = fetch_historical_candles()
@@ -249,7 +248,6 @@ def trigger_seed(x_seed_secret: str = Header(default="")):
         logger.error(f"Daily seed failed: {e}", exc_info=True)
         results["daily_candles"] = {"status": "error", "detail": str(e)}
 
-    # 2. Intraday candles
     try:
         from src.data.intraday_seeder import sync_intraday_today
         n2 = sync_intraday_today()
@@ -306,7 +304,7 @@ def get_scheduler_status():
     return {
         "scheduler_enabled": settings.SCHEDULER_ENABLED,
         "cycle_interval_minutes": settings.CYCLE_INTERVAL_MINUTES,
-        "market_hours": f"{settings.MARKET_OPEN_TIME}–{settings.MARKET_CLOSE_TIME} IST Mon–Fri",
+        "market_hours": f"{settings.MARKET_OPEN_TIME}-{settings.MARKET_CLOSE_TIME} IST Mon-Fri",
         "jobs": jobs_info
     }
 
