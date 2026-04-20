@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from pydantic import BaseModel
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Header
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import sentry_sdk
@@ -42,6 +42,8 @@ from src.backtest.signal_backtest import SignalBacktester
 
 scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
 scheduler_job_status = {}
+
+SEED_SECRET = os.getenv("SEED_SECRET", "")
 
 def run_scheduled_cycle():
     """Runs one full orchestrator cycle. Called by scheduler."""
@@ -224,6 +226,46 @@ from src.sandbox.scenario_engine import ScenarioEngine
 from src.data.db import insert_sandbox_run, read_sandbox_runs
 import dataclasses
 import json
+
+# ---------------------------------------------------------------------------
+# Seed endpoint — triggers daily + intraday data pull without needing a shell
+# Secured by SEED_SECRET env var. Set it once in Render dashboard.
+# Usage: curl -X POST https://ritam-api.onrender.com/api/seed \
+#             -H "x-seed-secret: <your-secret>"
+# ---------------------------------------------------------------------------
+@app.post("/api/seed")
+def trigger_seed(x_seed_secret: str = Header(default="")):
+    if not SEED_SECRET:
+        raise HTTPException(
+            status_code=500,
+            detail="SEED_SECRET env var not configured on server."
+        )
+    if x_seed_secret != SEED_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    results = {}
+
+    # 1. Daily candles
+    try:
+        from src.data.kite_feed import KiteFeed
+        feed = KiteFeed()
+        n = feed.seed_historical()
+        results["daily_candles"] = {"status": "ok", "inserted": n}
+    except Exception as e:
+        logger.error(f"Daily seed failed: {e}", exc_info=True)
+        results["daily_candles"] = {"status": "error", "detail": str(e)}
+
+    # 2. Intraday candles
+    try:
+        from src.data.intraday_seeder import sync_intraday_today
+        n2 = sync_intraday_today()
+        results["intraday_candles"] = {"status": "ok", "inserted": n2}
+    except Exception as e:
+        logger.error(f"Intraday seed failed: {e}", exc_info=True)
+        results["intraday_candles"] = {"status": "error", "detail": str(e)}
+
+    return results
+
 
 @app.post("/api/sandbox/run")
 def run_sandbox(payload: SandboxRunPayload):
