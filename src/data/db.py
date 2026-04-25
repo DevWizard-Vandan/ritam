@@ -572,6 +572,36 @@ def write_candles(symbol: str, candles: list[dict]):
         conn.commit()
 
 
+def write_news_raw(records: list[dict]) -> int:
+    """
+    Insert news records into news_raw, ignoring duplicates.
+    Each record dict: {source, headline, url, published_at, fetched_at}
+    Returns count of newly inserted rows.
+    """
+    inserted = 0
+    with get_connection() as conn:
+        for rec in records:
+            cursor = insert_or_ignore(
+                conn,
+                f"""
+                INSERT OR IGNORE INTO news_raw
+                (source, headline, url, published_at, fetched_at)
+                VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})
+                """,
+                (
+                    rec.get("source") or "",
+                    rec.get("headline") or "",
+                    rec.get("url"),
+                    rec.get("published_at") or "",
+                    rec.get("fetched_at") or "",
+                ),
+            )
+            if cursor.rowcount > 0:
+                inserted += cursor.rowcount
+        conn.commit()
+    return inserted
+
+
 def upsert_intraday_candles(symbol: str, candles: list[dict]) -> int:
     """
     Insert or ignore candles. Returns count of new rows inserted.
