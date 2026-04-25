@@ -88,6 +88,22 @@ def upsert_daily_metrics(
             _os.makedirs(_db_dir, exist_ok=True)
         conn = _sqlite3.connect(_db_path)
         try:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS daily_metrics (
+                    metric_date TEXT PRIMARY KEY,
+                    trades INTEGER NOT NULL DEFAULT 0,
+                    win_rate REAL NOT NULL DEFAULT 0.0,
+                    expectancy REAL NOT NULL DEFAULT 0.0,
+                    max_drawdown REAL NOT NULL DEFAULT 0.0,
+                    top_no_trade_reason TEXT,
+                    current_equity REAL NOT NULL DEFAULT 0.0,
+                    no_trade_counts_json TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
             conn.execute(sql, params)
             conn.commit()
         finally:
@@ -135,6 +151,10 @@ def read_daily_metrics(
             cur = conn.execute(sql, (limit,))
             cols = [d[0] for d in cur.description]
             rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+        except _sqlite3.OperationalError as exc:
+            if "no such table" in str(exc).lower():
+                return []
+            raise
         finally:
             conn.close()
         return _deserialize_metrics(rows)
@@ -192,6 +212,18 @@ def upsert_evaluation_state(
             _os.makedirs(_db_dir, exist_ok=True)
         conn = _sqlite3.connect(db_path)
         try:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS evaluation_state (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    evaluation_start_date TEXT NOT NULL,
+                    starting_equity REAL NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    UNIQUE(evaluation_start_date)
+                )
+                """
+            )
             conn.execute(sql, (evaluation_start_date, starting_equity))
             conn.commit()
         finally:
@@ -233,6 +265,10 @@ def read_evaluation_state(
             cur = conn.execute(sql)
             cols = [d[0] for d in cur.description]
             row = cur.fetchone()
+        except _sqlite3.OperationalError as exc:
+            if "no such table" in str(exc).lower():
+                return None
+            raise
         finally:
             conn.close()
         return dict(zip(cols, row)) if row else None

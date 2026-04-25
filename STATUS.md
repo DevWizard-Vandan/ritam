@@ -1,5 +1,5 @@
 ﻿# RITAM - Project Status
-# Last Updated: April 25, 2026 — Evaluation mode launch-ready
+# Last Updated: April 26, 2026 — Render startup hardening
 # Updating Agent: Codex
 
 ---
@@ -81,6 +81,7 @@ The system gets smarter every week via RL weight updates and grows its analog me
 - [x] `src/data/market_health.py` + `tests/data/test_market_health.py` â€” freshness checks, live quote fallback, and stale-data detection
 - [x] local import fallbacks â€” `psycopg2`, `sentry_sdk`, and `loguru` fallbacks added where needed for evaluation runtime
 - [x] final launch checks â€” `validate_system_ready()`, first-run marker, startup summary log, and daily summary snapshot log
+- [x] Render startup hardening â€” FastAPI lifespan startup steps now log and degrade instead of crashing, external readiness I/O is skipped during startup, missing DB helper exports restored, and evaluation helpers import from `db_eval_helpers`
 
 ---
 
@@ -169,6 +170,7 @@ The system gets smarter every week via RL weight updates and grows its analog me
 
 ## Blocked / Issues
 - `tests/api/test_server.py::test_candles_endpoint_returns_200` â€” pre-existing failure (candles table not initialised in test DB, unrelated to main logic)
+- `tests/trading/test_evaluation_mode.py` has date-sensitive assertions pinned to `2026-04-25`; on the current IST date (`2026-04-26`) 3 tests fail without code regressions.
 
 ---
 

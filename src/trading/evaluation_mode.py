@@ -113,6 +113,7 @@ def ensure_evaluation_state(db_path: str | None = None) -> dict[str, Any]:
 def validate_system_ready(
     db_path: str | None = None,
     scheduler: Any | None = None,
+    include_external_checks: bool = True,
 ) -> dict[str, Any]:
     """Check runtime readiness before starting the 4-week evaluation run."""
     resolved_db_path = db_path or settings.DB_PATH
@@ -150,16 +151,19 @@ def validate_system_ready(
     except Exception as exc:  # pragma: no cover - defensive
         checks["required_tables"] = {"ok": False, "error": str(exc)}
 
-    try:
-        pcr_snapshot = fetch_nifty_pcr(force_refresh=True, max_retries=1, timeout_seconds=5)
-        checks["pcr_fetcher"] = {
-            "ok": bool(pcr_snapshot.get("available", False)),
-            "status": pcr_snapshot.get("status"),
-            "pcr_value": pcr_snapshot.get("pcr"),
-            "is_stale": pcr_snapshot.get("is_stale"),
-        }
-    except Exception as exc:  # pragma: no cover - defensive
-        checks["pcr_fetcher"] = {"ok": False, "error": str(exc)}
+    if include_external_checks:
+        try:
+            pcr_snapshot = fetch_nifty_pcr(force_refresh=True, max_retries=1, timeout_seconds=5)
+            checks["pcr_fetcher"] = {
+                "ok": bool(pcr_snapshot.get("available", False)),
+                "status": pcr_snapshot.get("status"),
+                "pcr_value": pcr_snapshot.get("pcr"),
+                "is_stale": pcr_snapshot.get("is_stale"),
+            }
+        except Exception as exc:  # pragma: no cover - defensive
+            checks["pcr_fetcher"] = {"ok": False, "error": str(exc)}
+    else:
+        checks["pcr_fetcher"] = {"ok": True, "status": "skipped_startup"}
 
     try:
         scheduler_running = bool(scheduler and getattr(scheduler, "running", False))

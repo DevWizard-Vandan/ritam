@@ -72,6 +72,10 @@ class CursorWrapper:
     def fetchone(self):
         return self.cursor.fetchone()
 
+    @property
+    def description(self):
+        return self.cursor.description
+
 class ConnectionWrapper:
     def __init__(self, conn):
         self.conn = conn
@@ -96,9 +100,18 @@ class ConnectionWrapper:
         self.conn.close()
 
 if DB_MODE == "postgres":
-    DATABASE_URL = os.getenv("DATABASE_URL")
+    DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("TIMESCALE_URL")
+    POSTGRES_CONNECT_TIMEOUT = int(os.getenv("POSTGRES_CONNECT_TIMEOUT", "5"))
+
+    def _connect_postgres():
+        if not DATABASE_URL:
+            raise RuntimeError(
+                "DB_MODE=postgres requires DATABASE_URL or TIMESCALE_URL to be set"
+            )
+        return psycopg2.connect(DATABASE_URL, connect_timeout=POSTGRES_CONNECT_TIMEOUT)
+
     def get_connection():
-        return ConnectionWrapper(psycopg2.connect(DATABASE_URL))
+        return ConnectionWrapper(_connect_postgres())
 else:
     import sqlite3
     def _sqlite_connection(path: str | None = None):
@@ -200,7 +213,7 @@ def execute_ddl(conn, query):
 def init_db():
     """Create tables if they do not exist."""
     if DB_MODE == "postgres":
-        raw_conn = psycopg2.connect(DATABASE_URL)
+        raw_conn = _connect_postgres()
         ddl_statements = [
             """
             CREATE TABLE IF NOT EXISTS candles (
@@ -713,3 +726,282 @@ def read_candles(symbol: str, from_date: str, to_date: str, limit: int = None) -
         rows = conn.execute(query, tuple(params)).fetchall()
     return [{"timestamp_ist": r[0], "open": r[1], "high": r[2],
              "low": r[3], "close": r[4], "volume": r[5]} for r in rows]
+
+
+def insert_sandbox_run(
+    condition: str | None,
+    date: str | None,
+    data_source: str,
+    regime: str,
+    narrative: str,
+    confidence: float,
+    result_json: str,
+) -> None:
+    """Persist a sandbox scenario run."""
+    with get_connection() as conn:
+        conn.execute(
+            f"""
+            INSERT INTO sandbox_runs
+                (condition, date, data_source, regime, narrative, confidence, result_json)
+            VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER},
+                    {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})
+            """,
+            (condition, date, data_source, regime, narrative, confidence, result_json),
+        )
+
+
+def read_sandbox_runs(limit: int = 10) -> list[dict]:
+    """Return recent sandbox scenario runs, newest first."""
+    safe_limit = max(1, int(limit))
+    with get_connection() as conn:
+        cursor = conn.execute(
+            f"""
+            SELECT id, condition, date, data_source, regime, narrative,
+                   confidence, result_json, created_at
+            FROM sandbox_runs
+            ORDER BY id DESC
+            LIMIT {PLACEHOLDER}
+            """,
+            (safe_limit,),
+        )
+        rows = cursor.fetchall()
+    return [
+        {
+            "id": row[0],
+            "condition": row[1],
+            "date": row[2],
+            "data_source": row[3],
+            "regime": row[4],
+            "narrative": row[5],
+            "confidence": row[6],
+            "result_json": row[7],
+            "created_at": row[8],
+        }
+        for row in rows
+    ]
+
+
+def read_paper_trades(limit: int = 50) -> list[dict]:
+    """Return recent paper trades, newest first."""
+    safe_limit = max(1, int(limit))
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT id, signal, entry_price, entry_time, exit_price, exit_time,
+                   pnl, outcome, sharpe_contribution, created_at
+            FROM paper_trades
+            ORDER BY id DESC
+            LIMIT {PLACEHOLDER}
+            """,
+            (safe_limit,),
+        ).fetchall()
+    return [
+        {
+            "id": row[0],
+            "signal": row[1],
+            "entry_price": row[2],
+            "entry_time": row[3],
+            "exit_price": row[4],
+            "exit_time": row[5],
+            "pnl": row[6],
+            "outcome": row[7],
+            "sharpe_contribution": row[8],
+            "created_at": row[9],
+        }
+        for row in rows
+    ]
+
+
+def get_agent_accuracy_stats() -> list[dict]:
+    """Return agent weights and rolling accuracy, sorted by weight."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT agent_name, weight, accuracy_7d, accuracy_30d,
+                   total_predictions, correct_predictions, last_updated
+            FROM agent_weights
+            ORDER BY weight DESC, agent_name ASC
+            """
+        ).fetchall()
+    return [
+        {
+            "agent_name": row[0],
+            "weight": row[1],
+            "accuracy_7d": row[2],
+            "accuracy_30d": row[3],
+            "total_predictions": row[4],
+            "correct_predictions": row[5],
+            "last_updated": row[6],
+        }
+        for row in rows
+    ]
+
+
+def get_agent_weights() -> dict[str, float]:
+    """Return persisted agent weights keyed by agent name."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT agent_name, weight FROM agent_weights"
+        ).fetchall()
+    return {row[0]: float(row[1]) for row in rows}
+
+
+def upsert_agent_weight(
+    agent_name: str,
+    weight: float,
+    accuracy_7d: float | None = None,
+    accuracy_30d: float | None = None,
+    total: int = 0,
+    correct: int = 0,
+) -> None:
+    """Insert or update one agent's current weight and accuracy stats."""
+    if DB_MODE == "postgres":
+        sql = """
+            INSERT INTO agent_weights (
+                agent_name, weight, accuracy_7d, accuracy_30d,
+                total_predictions, correct_predictions, last_updated
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (agent_name) DO UPDATE SET
+                weight = EXCLUDED.weight,
+                accuracy_7d = EXCLUDED.accuracy_7d,
+                accuracy_30d = EXCLUDED.accuracy_30d,
+                total_predictions = EXCLUDED.total_predictions,
+                correct_predictions = EXCLUDED.correct_predictions,
+                last_updated = CURRENT_TIMESTAMP
+        """
+    else:
+        sql = """
+            INSERT INTO agent_weights (
+                agent_name, weight, accuracy_7d, accuracy_30d,
+                total_predictions, correct_predictions, last_updated
+            )
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(agent_name) DO UPDATE SET
+                weight = excluded.weight,
+                accuracy_7d = excluded.accuracy_7d,
+                accuracy_30d = excluded.accuracy_30d,
+                total_predictions = excluded.total_predictions,
+                correct_predictions = excluded.correct_predictions,
+                last_updated = datetime('now')
+        """
+    with get_connection() as conn:
+        conn.execute(
+            sql,
+            (agent_name, weight, accuracy_7d, accuracy_30d, total, correct),
+        )
+
+
+def insert_weight_history(
+    agent_name: str,
+    weight: float,
+    accuracy_7d: float | None,
+) -> None:
+    """Append a weight-history point."""
+    timestamp_sql = "CURRENT_TIMESTAMP" if DB_MODE == "postgres" else "datetime('now')"
+    with get_connection() as conn:
+        conn.execute(
+            f"""
+            INSERT INTO weight_history (agent_name, weight, accuracy_7d, recorded_at)
+            VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {timestamp_sql})
+            """,
+            (agent_name, weight, accuracy_7d),
+        )
+
+
+def log_agent_signals(cycle_id: str, signals: list) -> None:
+    """Persist raw agent signals for later attribution analysis."""
+    with get_connection() as conn:
+        for signal in signals:
+            conn.execute(
+                f"""
+                INSERT INTO agent_signal_log
+                    (cycle_id, agent_name, signal, confidence, reasoning)
+                VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER},
+                        {PLACEHOLDER}, {PLACEHOLDER})
+                """,
+                (
+                    cycle_id,
+                    getattr(signal, "agent_name", "unknown"),
+                    int(getattr(signal, "signal", 0)),
+                    float(getattr(signal, "confidence", 0.0)),
+                    getattr(signal, "reasoning", ""),
+                ),
+            )
+
+
+def insert_paper_trade(
+    signal: str,
+    entry_price: float,
+    entry_time: str,
+    exit_price: float,
+    exit_time: str,
+    pnl: float,
+    outcome: str,
+    sharpe_contribution: float | None = None,
+) -> None:
+    """Persist a completed paper trade."""
+    with get_connection() as conn:
+        conn.execute(
+            f"""
+            INSERT INTO paper_trades (
+                signal, entry_price, entry_time, exit_price, exit_time,
+                pnl, outcome, sharpe_contribution
+            )
+            VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER},
+                    {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})
+            """,
+            (
+                signal,
+                entry_price,
+                entry_time,
+                exit_price,
+                exit_time,
+                pnl,
+                outcome,
+                sharpe_contribution,
+            ),
+        )
+
+
+def get_paper_trade_stats() -> dict:
+    """Return aggregate paper-trading stats."""
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT COUNT(*),
+                   COALESCE(SUM(pnl), 0),
+                   COALESCE(SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END), 0)
+            FROM paper_trades
+            """
+        ).fetchone()
+    trade_count = int(row[0] or 0)
+    total_pnl = float(row[1] or 0.0)
+    wins = int(row[2] or 0)
+    return {
+        "trade_count": trade_count,
+        "total_pnl": total_pnl,
+        "win_rate": round(wins / trade_count, 4) if trade_count else 0.0,
+    }
+
+
+def get_latest_daily_metrics() -> dict | None:
+    """Return the most recent daily metrics row."""
+    from src.data.db_eval_helpers import read_daily_metrics
+
+    rows = read_daily_metrics(limit=1)
+    return rows[0] if rows else None
+
+
+def __getattr__(name: str):
+    """Lazy compatibility exports for evaluation helper functions."""
+    if name in {
+        "read_daily_metrics",
+        "read_evaluation_state",
+        "upsert_daily_metrics",
+        "upsert_evaluation_state",
+    }:
+        from src.data import db_eval_helpers
+
+        return getattr(db_eval_helpers, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

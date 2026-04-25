@@ -14,6 +14,12 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Head
 from fastapi.middleware.cors import CORSMiddleware
 import os
 try:
+    from loguru import logger
+except ModuleNotFoundError:  # pragma: no cover - local fallback
+    import logging
+    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+    logger = logging.getLogger(__name__)
+try:
     import sentry_sdk
     from sentry_sdk.integrations.fastapi import FastApiIntegration
 except ModuleNotFoundError:  # pragma: no cover - local fallback
@@ -21,17 +27,19 @@ except ModuleNotFoundError:  # pragma: no cover - local fallback
 
     class FastApiIntegration:  # type: ignore[override]
         pass
-import src.orchestrator.agent as orch_agent
 from src.data.db import get_connection
 
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")
 if SENTRY_DSN and sentry_sdk is not None:
-    sentry_sdk.init(
-        dsn=SENTRY_DSN,
-        integrations=[FastApiIntegration()],
-        traces_sample_rate=0.2,
-        environment=os.getenv("ENVIRONMENT", "development")
-    )
+    try:
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            integrations=[FastApiIntegration()],
+            traces_sample_rate=0.2,
+            environment=os.getenv("ENVIRONMENT", "development")
+        )
+    except Exception as exc:
+        logger.exception(f"Sentry initialization failed; continuing startup: {exc}")
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -41,11 +49,6 @@ from src.data.db import read_candles, get_connection
 from src.config import settings
 from src.feedback.tracker import PredictionTracker
 from src.feedback.loop import FeedbackLoop
-try:
-    from loguru import logger
-except ModuleNotFoundError:  # pragma: no cover - local fallback
-    import logging
-    logger = logging.getLogger(__name__)
 from src.reasoning.analog_finder import AnalogFinder
 import datetime as dt
 from src.backtest.signal_backtest import SignalBacktester
@@ -140,107 +143,138 @@ def weight_update_job():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from src.data.db import init_db
-    init_db()
-    logger.info("Database initialized on startup.")
-    ensure_evaluation_state(settings.DB_PATH)
+    startup_errors: list[dict[str, str]] = []
+
+    def run_startup_step(name: str, func):
+        try:
+            result = func()
+            logger.info(f"Startup step succeeded: {name}")
+            return result
+        except Exception as exc:
+            startup_errors.append({"step": name, "error": str(exc)})
+            logger.exception(f"Startup step failed: {name}: {exc}")
+            return None
+
+    run_startup_step("init_db", init_db)
+    run_startup_step(
+        "ensure_evaluation_state",
+        lambda: ensure_evaluation_state(settings.DB_PATH),
+    )
 
     if settings.SCHEDULER_ENABLED:
-        scheduler.add_job(
-            run_scheduled_cycle,
-            trigger=IntervalTrigger(minutes=settings.CYCLE_INTERVAL_MINUTES),
-            id="market_cycle",
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True,
-        )
+        def configure_scheduler():
+            scheduler.add_job(
+                run_scheduled_cycle,
+                trigger=IntervalTrigger(minutes=settings.CYCLE_INTERVAL_MINUTES),
+                id="market_cycle",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
 
-        def intraday_sync_job():
-            from src.data.intraday_seeder import sync_intraday_today
-            try:
-                n = sync_intraday_today()
-                logger.info(f"Intraday sync: {n} candles added")
-                scheduler_job_status["intraday_sync"] = "success"
-            except Exception as e:
-                logger.error(f"Intraday sync failed: {e}", exc_info=True)
-                scheduler_job_status["intraday_sync"] = "failed"
+            def intraday_sync_job():
+                from src.data.intraday_seeder import sync_intraday_today
+                try:
+                    n = sync_intraday_today()
+                    logger.info(f"Intraday sync: {n} candles added")
+                    scheduler_job_status["intraday_sync"] = "success"
+                except Exception as e:
+                    logger.error(f"Intraday sync failed: {e}", exc_info=True)
+                    scheduler_job_status["intraday_sync"] = "failed"
 
-        scheduler.add_job(
-            intraday_sync_job,
-            trigger=CronTrigger(hour=9, minute=10, timezone="Asia/Kolkata"),
-            id="intraday_sync",
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True,
-        )
+            scheduler.add_job(
+                intraday_sync_job,
+                trigger=CronTrigger(hour=9, minute=10, timezone="Asia/Kolkata"),
+                id="intraday_sync",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
 
-        def intraday_resolve_job():
-            from src.learning.intraday_resolver import resolve_intraday_outcomes
-            try:
-                n = resolve_intraday_outcomes()
-                logger.info(f"Intraday resolution: {n} outcomes resolved")
-                scheduler_job_status["intraday_resolver"] = "success"
-            except Exception as e:
-                logger.error(f"Intraday resolve failed: {e}", exc_info=True)
-                scheduler_job_status["intraday_resolver"] = "failed"
+            def intraday_resolve_job():
+                from src.learning.intraday_resolver import resolve_intraday_outcomes
+                try:
+                    n = resolve_intraday_outcomes()
+                    logger.info(f"Intraday resolution: {n} outcomes resolved")
+                    scheduler_job_status["intraday_resolver"] = "success"
+                except Exception as e:
+                    logger.error(f"Intraday resolve failed: {e}", exc_info=True)
+                    scheduler_job_status["intraday_resolver"] = "failed"
 
-        scheduler.add_job(
-            intraday_resolve_job,
-            trigger=IntervalTrigger(minutes=30),
-            id="intraday_resolver",
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True,
-        )
-        scheduler.add_job(
-            resolve_outcomes_job,
-            trigger=CronTrigger(hour=9, minute=0, timezone="Asia/Kolkata"),
-            id="outcome_resolver",
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True,
-        )
-        scheduler.add_job(
-            weight_update_job,
-            trigger=CronTrigger(day_of_week="sun", hour=0, minute=0, timezone="Asia/Kolkata"),
-            id="weight_updater",
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True,
-        )
-        def daily_metrics_job():
-            try:
-                summary = generate_daily_summary()
-                log_daily_snapshot(summary)
-                logger.info(f"Daily metrics summary generated: {summary}")
-                scheduler_job_status["daily_metrics"] = "success"
-            except Exception as e:
-                logger.error(f"Daily metrics summary failed: {e}", exc_info=True)
-                scheduler_job_status["daily_metrics"] = "failed"
+            scheduler.add_job(
+                intraday_resolve_job,
+                trigger=IntervalTrigger(minutes=30),
+                id="intraday_resolver",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
+            scheduler.add_job(
+                resolve_outcomes_job,
+                trigger=CronTrigger(hour=9, minute=0, timezone="Asia/Kolkata"),
+                id="outcome_resolver",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
+            scheduler.add_job(
+                weight_update_job,
+                trigger=CronTrigger(day_of_week="sun", hour=0, minute=0, timezone="Asia/Kolkata"),
+                id="weight_updater",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
 
-        scheduler.add_job(
-            daily_metrics_job,
-            trigger=CronTrigger(
-                day_of_week="mon-fri",
-                hour=15,
-                minute=35,
-                timezone="Asia/Kolkata",
-            ),
-            id="daily_metrics",
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True,
-        )
-        if not scheduler.running:
-            scheduler.start()
-            logger.info("Scheduler started.")
+            def daily_metrics_job():
+                try:
+                    summary = generate_daily_summary()
+                    log_daily_snapshot(summary)
+                    logger.info(f"Daily metrics summary generated: {summary}")
+                    scheduler_job_status["daily_metrics"] = "success"
+                except Exception as e:
+                    logger.error(f"Daily metrics summary failed: {e}", exc_info=True)
+                    scheduler_job_status["daily_metrics"] = "failed"
 
-    ready_report = validate_system_ready(settings.DB_PATH, scheduler=scheduler if scheduler.running else None)
-    log_startup_summary(ready_report)
-    logger.info(f"Evaluation readiness status: {ready_report['status']}")
+            scheduler.add_job(
+                daily_metrics_job,
+                trigger=CronTrigger(
+                    day_of_week="mon-fri",
+                    hour=15,
+                    minute=35,
+                    timezone="Asia/Kolkata",
+                ),
+                id="daily_metrics",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
+            if not scheduler.running:
+                scheduler.start()
+                logger.info("Scheduler started.")
+
+        run_startup_step("scheduler_start", configure_scheduler)
+
+    ready_report = run_startup_step(
+        "validate_system_ready",
+        lambda: validate_system_ready(
+            settings.DB_PATH,
+            scheduler=scheduler if scheduler.running else None,
+            include_external_checks=False,
+        ),
+    )
+    if ready_report:
+        run_startup_step("log_startup_summary", lambda: log_startup_summary(ready_report))
+        logger.info(f"Evaluation readiness status: {ready_report['status']}")
+    if startup_errors:
+        logger.warning(f"Startup completed with degraded checks: {startup_errors}")
     yield
-    if scheduler.running:
-        scheduler.shutdown(wait=False)
-        logger.info("Scheduler shutdown.")
+    try:
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
+            logger.info("Scheduler shutdown.")
+    except Exception as exc:
+        logger.exception(f"Scheduler shutdown failed: {exc}")
 
 app = FastAPI(title="RITAM API", version="2.0", lifespan=lifespan)
 manager = WebSocketManager()
@@ -263,8 +297,6 @@ class SandboxRunPayload(BaseModel):
     date: str | None = None
     candles_ahead: int = 20
 
-import src.orchestrator.agent
-from src.sandbox.scenario_engine import ScenarioEngine
 from src.data.db import insert_sandbox_run, read_sandbox_runs
 import dataclasses
 import json
@@ -300,6 +332,8 @@ def trigger_seed(x_seed_secret: str = Header(default="")):
 def run_sandbox(payload: SandboxRunPayload):
     if payload.condition is None and payload.date is None:
         raise HTTPException(status_code=400, detail="At least one of condition or date must be provided")
+    from src.sandbox.scenario_engine import ScenarioEngine
+
     engine = ScenarioEngine()
     try:
         result = engine.run(
@@ -344,7 +378,9 @@ def get_scheduler_status():
 
 @app.get("/api/explanation/latest")
 def get_latest_explanation():
-    return src.orchestrator.agent.LATEST_EXPLANATION
+    from src.orchestrator import agent as orch_agent
+
+    return orch_agent.LATEST_EXPLANATION
 
 @app.get("/api/feedback/accuracy")
 def get_feedback_accuracy():
@@ -419,7 +455,7 @@ def health_check():
     return {
         "status": "ok",
         "db": db_status,
-        "last_cycle": orch_agent.last_cycle_time,
+        "last_cycle": _get_last_cycle_time(),
         "db_mode": os.getenv("DB_MODE", "sqlite"),
         "version": "1.0.0"
     }
@@ -484,6 +520,16 @@ def get_paper_stats():
 @app.get("/api/data/health")
 def get_data_health():
     return check_data_freshness()
+
+
+def _get_last_cycle_time():
+    try:
+        from src.orchestrator import agent as orch_agent
+
+        return orch_agent.last_cycle_time
+    except Exception as exc:
+        logger.warning(f"Unable to load orchestrator cycle timestamp: {exc}")
+        return None
 
 
 @app.get("/api/evaluation/metrics")
