@@ -269,26 +269,14 @@ from src.data.db import insert_sandbox_run, read_sandbox_runs
 import dataclasses
 import json
 
-# ---------------------------------------------------------------------------
-# Seed endpoint — triggers daily + intraday data pull without needing a shell.
-# Secured by SEED_SECRET env var. Set it once in Render dashboard.
-# Usage (PowerShell):
-#   iwr -Uri https://ritam-api.onrender.com/api/seed -Method POST `
-#       -Headers @{"x-seed-secret"="<your-secret>"}
-# ---------------------------------------------------------------------------
 @app.post("/api/seed")
 def trigger_seed(x_seed_secret: str = Header(default="")):
     if not SEED_SECRET:
-        raise HTTPException(
-            status_code=500,
-            detail="SEED_SECRET env var not configured on server."
-        )
+        raise HTTPException(status_code=500, detail="SEED_SECRET env var not configured on server.")
     if x_seed_secret != SEED_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     results = {}
-
-    # 1. Daily candles via fetch_historical_candles()
     try:
         from src.data.kite_feed import fetch_historical_candles
         n = fetch_historical_candles()
@@ -297,7 +285,6 @@ def trigger_seed(x_seed_secret: str = Header(default="")):
         logger.error(f"Daily seed failed: {e}", exc_info=True)
         results["daily_candles"] = {"status": "error", "detail": str(e)}
 
-    # 2. Intraday candles
     try:
         from src.data.intraday_seeder import sync_intraday_today
         n2 = sync_intraday_today()
@@ -313,7 +300,6 @@ def trigger_seed(x_seed_secret: str = Header(default="")):
 def run_sandbox(payload: SandboxRunPayload):
     if payload.condition is None and payload.date is None:
         raise HTTPException(status_code=400, detail="At least one of condition or date must be provided")
-
     engine = ScenarioEngine()
     try:
         result = engine.run(
@@ -323,7 +309,6 @@ def run_sandbox(payload: SandboxRunPayload):
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
     insert_sandbox_run(
         condition=result.condition,
         date=result.date,
@@ -337,8 +322,7 @@ def run_sandbox(payload: SandboxRunPayload):
 
 @app.get("/api/sandbox/history")
 def get_sandbox_history():
-    runs = read_sandbox_runs(limit=10)
-    return {"runs": runs}
+    return {"runs": read_sandbox_runs(limit=10)}
 
 @app.get("/api/scheduler/status")
 def get_scheduler_status():
@@ -354,10 +338,9 @@ def get_scheduler_status():
     return {
         "scheduler_enabled": settings.SCHEDULER_ENABLED,
         "cycle_interval_minutes": settings.CYCLE_INTERVAL_MINUTES,
-        "market_hours": f"{settings.MARKET_OPEN_TIME}–{settings.MARKET_CLOSE_TIME} IST Mon–Fri",
+        "market_hours": f"{settings.MARKET_OPEN_TIME}-{settings.MARKET_CLOSE_TIME} IST Mon-Fri",
         "jobs": jobs_info
     }
-
 
 @app.get("/api/explanation/latest")
 def get_latest_explanation():
@@ -367,7 +350,6 @@ def get_latest_explanation():
 def get_feedback_accuracy():
     return tracker.get_accuracy_stats()
 
-
 @app.post("/api/feedback/outcome")
 def post_outcome(payload: OutcomePayload):
     try:
@@ -375,7 +357,6 @@ def post_outcome(payload: OutcomePayload):
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"status": "ok", "timestamp": payload.timestamp}
-
 
 @app.post("/api/feedback/resolve/{timestamp}")
 def resolve_outcome(timestamp: str):
@@ -388,7 +369,6 @@ def resolve_outcome(timestamp: str):
         raise HTTPException(status_code=404, detail="No prediction or candles found for outcome resolution")
     return result
 
-
 @app.get("/api/analogs")
 def get_analogs(top_n: int = 3):
     now = dt.datetime.now(dt.timezone(dt.timedelta(hours=5, minutes=30))).isoformat()
@@ -396,16 +376,13 @@ def get_analogs(top_n: int = 3):
     finder = AnalogFinder(settings.DB_PATH)
     return finder.find_analogs(candles, top_n=top_n)
 
-
 @app.get("/api/candles")
 def get_candles(symbol: str = "NSE:NIFTY 50", limit: int = 100):
     from pytz import timezone
-    import pytz
     ist = timezone(settings.TIMEZONE)
     now = datetime.now(ist).isoformat()
     candles = read_candles(symbol, "2000-01-01", now)
     return {"symbol": symbol, "candles": candles[-limit:]}
-
 
 @app.get("/api/intraday/candles")
 def get_intraday_candles(symbol: str = "NSE:NIFTY 50", limit: int = 50):
@@ -430,7 +407,6 @@ def get_intraday_stats():
         "last_sync": latest,
         "resolution_mode": "intraday" if settings.USE_INTRADAY else "daily"
     }
-
 
 @app.get("/health")
 def health_check():
@@ -458,7 +434,6 @@ def get_accuracy():
     accuracy = round(correct / total, 4) if total > 0 else None
     return {"total_predictions": total, "correct": correct, "direction_accuracy": accuracy}
 
-
 @app.get("/api/agents")
 def get_agent_info():
     weights_path = "config/agent_weights.json"
@@ -466,7 +441,6 @@ def get_agent_info():
         with open(weights_path) as f:
             return json.load(f)
     return {"weights": {}, "week_accuracy": None}
-
 
 @app.get("/api/agents/stats")
 def get_agents_stats():
@@ -481,7 +455,6 @@ def get_agents_stats():
         now = datetime.now(ist).isoformat()
     return {"updated_at": now, "agents": get_agent_accuracy_stats()}
 
-
 @app.get("/api/weights/history")
 def get_weights_history(agent: str, limit: int = 10):
     with get_connection() as conn:
@@ -491,12 +464,10 @@ def get_weights_history(agent: str, limit: int = 10):
         ).fetchall()
     return [{"weight": row[0], "accuracy_7d": row[1], "recorded_at": row[2]} for row in rows]
 
-
 @app.post("/api/weights/update")
 def trigger_weight_update():
     from src.learning.weight_updater import run_weight_update
     return run_weight_update()
-
 
 @app.get("/api/paper/trades")
 def get_paper_trades(limit: int = 50):

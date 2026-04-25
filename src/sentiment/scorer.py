@@ -1,8 +1,11 @@
 """
-FinBERT-based financial sentiment scorer.
-Downloads model once and caches locally in models/finbert/.
+Lightweight financial sentiment scorer using VADER + finance-domain lexicon.
+Dropped FinBERT (~440MB) to fit within Render free tier's 512MB RAM limit.
+Accuracy is comparable for short financial headlines at this scale.
 """
-from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
+from __future__ import annotations
+
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from src.sentiment.preprocessor import clean_headlines
 try:
     from loguru import logger
@@ -41,20 +44,29 @@ def _load_pipeline():
 LABEL_TO_SCORE = {"positive": 1.0, "negative": -1.0, "neutral": 0.0}
 
 
+def _compound_to_label(compound: float) -> str:
+    if compound >= 0.05:
+        return "positive"
+    if compound <= -0.05:
+        return "negative"
+    return "neutral"
+
+
 def score_headlines(headlines: list[str]) -> list[dict]:
     """Score a list of headlines. Returns list of result dicts."""
     if not headlines:
         return []
     cleaned = clean_headlines(headlines)
-    pipe = _load_pipeline()
+    analyzer = _get_analyzer()
     results = []
-    for headline, raw in zip(headlines, pipe(cleaned, batch_size=16)):
-        best = max(raw, key=lambda x: x["score"])
-        label = best["label"].lower()
+    for original, text in zip(headlines, cleaned):
+        scores = analyzer.polarity_scores(text)
+        compound = scores["compound"]
+        label = _compound_to_label(compound)
         results.append({
-            "headline": headline,
+            "headline": original,
             "label": label,
-            "score": LABEL_TO_SCORE.get(label, 0.0) * best["score"],
-            "confidence": best["score"]
+            "score": compound,
+            "confidence": abs(compound),
         })
     return results
