@@ -147,10 +147,6 @@ def _ensure_evaluation_state_table(conn) -> None:
     conn.execute(EVALUATION_STATE_DDL)
 
 
-def _ensure_daily_metrics_table(conn) -> None:
-    conn.execute(DAILY_METRICS_DDL)
-
-
 def _pg_ddl(query: str) -> str:
     """Transform SQLite DDL to PostgreSQL-compatible DDL."""
     query = query.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
