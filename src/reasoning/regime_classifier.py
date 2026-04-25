@@ -3,7 +3,12 @@ Market regime classifier — uses Gemma 4 E2B to classify current regime.
 Returns one of: crisis / recovery / trending_up / trending_down / choppy / baseline
 """
 from src.reasoning.gemma_client import quick_reason
-from loguru import logger
+try:
+    from loguru import logger
+except ModuleNotFoundError:  # pragma: no cover - environment fallback
+    import logging
+
+    logger = logging.getLogger(__name__)
 
 REGIME_PROMPT = """
 You are a market regime classifier. Reply with one word only.

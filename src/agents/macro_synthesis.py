@@ -1,5 +1,10 @@
 from src.agents.base import AgentBase, AgentSignal
-from loguru import logger
+try:
+    from loguru import logger
+except ModuleNotFoundError:  # pragma: no cover - environment fallback
+    import logging
+
+    logger = logging.getLogger(__name__)
 
 class MacroSynthesisAgent(AgentBase):
     """Meta-agent: synthesizes all other agent signals into one verdict."""

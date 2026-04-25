@@ -7,35 +7,38 @@ from __future__ import annotations
 
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from src.sentiment.preprocessor import clean_headlines
-from loguru import logger
+try:
+    from loguru import logger
+except ModuleNotFoundError:  # pragma: no cover - environment fallback
+    import logging
 
-# Finance-domain overrides: words VADER under/over-weights for market context
-_FINANCE_LEXICON: dict[str, float] = {
-    # Strongly bullish
-    "rally": 2.5, "breakout": 2.2, "surge": 2.4, "soar": 2.5, "boom": 2.2,
-    "record": 1.8, "beat": 1.6, "outperform": 2.0, "upgrade": 1.9,
-    "recovery": 1.7, "rebound": 1.8, "inflow": 1.5, "bullish": 2.5,
-    "upside": 1.6, "momentum": 1.4, "growth": 1.5, "profit": 1.6,
-    # Strongly bearish
-    "crash": -3.0, "plunge": -2.8, "tumble": -2.4, "slump": -2.2,
-    "selloff": -2.5, "sell-off": -2.5, "recession": -2.6, "default": -2.5,
-    "downgrade": -2.0, "bearish": -2.5, "outflow": -1.8, "loss": -1.6,
-    "decline": -1.5, "weakness": -1.6, "volatility": -1.2, "risk": -1.0,
-    "concern": -1.3, "uncertainty": -1.4, "inflation": -1.3, "rate hike": -1.5,
-    # Neutral overrides (VADER wrongly scores these)
-    "market": 0.0, "trade": 0.0, "stock": 0.0, "fund": 0.0, "index": 0.0,
-}
+    logger = logging.getLogger(__name__)
+import os
 
-_analyzer: SentimentIntensityAnalyzer | None = None
+MODEL_PATH = "models/finbert"
+HF_MODEL_ID = "ProsusAI/finbert"
+
+_pipeline = None
 
 
-def _get_analyzer() -> SentimentIntensityAnalyzer:
-    global _analyzer
-    if _analyzer is None:
-        logger.info("Initialising VADER sentiment analyser with finance lexicon")
-        _analyzer = SentimentIntensityAnalyzer()
-        _analyzer.lexicon.update(_FINANCE_LEXICON)
-    return _analyzer
+def _load_pipeline():
+    global _pipeline
+    if _pipeline is not None:
+        return _pipeline
+    if os.path.exists(MODEL_PATH):
+        logger.info("Loading FinBERT from local cache")
+        _pipeline = pipeline("text-classification", model=MODEL_PATH,
+                             tokenizer=MODEL_PATH, top_k=None)
+    else:
+        logger.info("Downloading FinBERT from HuggingFace — this may take a few minutes")
+        os.makedirs(MODEL_PATH, exist_ok=True)
+        tokenizer = AutoTokenizer.from_pretrained(HF_MODEL_ID)
+        model = AutoModelForSequenceClassification.from_pretrained(HF_MODEL_ID)
+        tokenizer.save_pretrained(MODEL_PATH)
+        model.save_pretrained(MODEL_PATH)
+        _pipeline = pipeline("text-classification", model=model,
+                             tokenizer=tokenizer, top_k=None)
+    return _pipeline
 
 
 LABEL_TO_SCORE = {"positive": 1.0, "negative": -1.0, "neutral": 0.0}

@@ -4,7 +4,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from src.data.news_fetcher import fetch_headlines
-from loguru import logger
+try:
+    from loguru import logger
+except ModuleNotFoundError:  # pragma: no cover - environment fallback
+    import logging
+
+    logger = logging.getLogger(__name__)
 
 last_cycle_time = None
 from src.reasoning.analog_finder import find_analogs
@@ -14,6 +19,10 @@ from src.feedback.loop import FeedbackLoop
 from src.feedback.tracker import PredictionTracker
 from src.config import settings
 from src.reasoning.analog_explainer import AnalogExplainer
+from src.trading.performance_tracker import PerformanceTracker
+from src.trading.trade_gate import evaluate_trade
+from src.trading.evaluation_mode import EvaluationSafetyGuard
+from src.trading.evaluation_config import SUMMARY_EVERY_N_CYCLES
 
 # Hard deadline for all concurrent agents.
 # NewsImpactAgent is the slowest (network + FinBERT + Gemini) and has a
@@ -121,6 +130,8 @@ class OrchestratorResult:
     final_confidence: float = 0.0
     source: str = "daily"
     agent_signals_json: str = ""
+    trade_gate: dict = field(default_factory=dict)
+    execution_action: str = "SKIP"
 
 
 from src.paper_trading.engine import PaperTradingEngine
@@ -139,6 +150,9 @@ class MarketOrchestrator:
         self.loop = loop or FeedbackLoop(self.tracker)
         self.explainer = AnalogExplainer()
         self.paper_engine = PaperTradingEngine()
+        self.trade_tracker = PerformanceTracker(settings.DB_PATH)
+        self.evaluation_guard = EvaluationSafetyGuard(settings.DB_PATH)
+        self._evaluation_cycle_counter = 0
 
     def run_cycle(
         self,
@@ -296,37 +310,144 @@ class MarketOrchestrator:
 
         final_confidence = synthesis.confidence
 
-        # --- Paper Trading Integration ---
+        # --- Trade Gate ---
         current_price = float(last_candle.get("close", 0.0))
-        # Get ISO timestamp
         import datetime
+        import uuid
         timestamp_str = datetime.datetime.now().isoformat()
         if "timestamp_ist" in last_candle:
             timestamp_str = last_candle["timestamp_ist"]
 
-        if signal in ["buy", "sell"]:
-            if self.paper_engine.open_pos is None:
-                # Case 1 - No open position
-                logger.info(f"PaperTrading: No open position, opening {signal.upper()}")
-                self.paper_engine.open_position(signal, current_price, timestamp_str)
-            else:
-                current_signal = self.paper_engine.open_pos["signal"].lower()
-                if current_signal != signal:
-                    # Case 2 - Signal Flip
-                    logger.info(f"PaperTrading: Signal flip from {current_signal.upper()} to {signal.upper()}, closing current and opening new")
-                    self.paper_engine.close_position(current_price, timestamp_str)
-                    self.paper_engine.open_position(signal, current_price, timestamp_str)
+        trade_gate_result = evaluate_trade(
+            regime=regime,
+            analog_bias=signal,
+            confidence=final_confidence,
+            timestamp=timestamp_str,
+        )
+
+        execution_action = "SKIP"
+        safety = self.evaluation_guard.evaluate_safety(trade_gate_result, timestamp_str)
+        pcr_value = trade_gate_result.get("details", {}).get("pcr_value")
+        if safety.get("warn_trade_limit", False):
+            logger.warning(
+                f"Evaluation soft limit exceeded: {safety['trade_count_today']} trades today "
+                f"(soft limit {self.evaluation_guard.max_trades_per_day})"
+            )
+
+        try:
+            if safety.get("skip", False):
+                execution_action = "SKIP_SAFETY"
+                no_trade_meta = self.trade_tracker.record_decision(
+                    decision="NO_TRADE",
+                    reason=safety["reason_code"],
+                    signal=signal,
+                    confidence=final_confidence,
+                    regime=regime,
+                    timestamp=timestamp_str,
+                    pcr_value=pcr_value,
+                    sample_every=5,
+                )
+                if no_trade_meta.get("should_log", False):
+                    logger.info(f"Safety skip {safety['reason_code']}: {safety['reason']}")
                 else:
-                    # Same signal, keep open
-                    logger.info(f"PaperTrading: Signal is {signal.upper()}, keeping existing position open")
-        else:
-            # Case 3 - HOLD
-            logger.info("PaperTrading: Signal is HOLD, keeping existing position open (if any)")
+                    logger.debug(
+                        f"Safety skip sampled {safety['reason_code']} occurrence="
+                        f"{no_trade_meta['occurrence']}"
+                    )
+            elif trade_gate_result["decision"] == "TRADE":
+                gate_signal = trade_gate_result["signal"]
+                execution_action = "EXECUTE"
+                execution_signal = "buy" if gate_signal == "BUY_CALL" else "sell"
+                trade_id = uuid.uuid4().hex
+                trade_context = {
+                    "trade_id": trade_id,
+                    "confidence": trade_gate_result["details"].get("confidence_adjusted", final_confidence),
+                    "regime": regime,
+                    "pcr_value": pcr_value,
+                    "reason_code": trade_gate_result["reason_code"],
+                }
+                if self.paper_engine.open_pos is None:
+                    logger.info(
+                        f"TradeGate approved {gate_signal}; opening {execution_signal.upper()} execution"
+                    )
+                    try:
+                        self.paper_engine.open_position(
+                            execution_signal,
+                            current_price,
+                            timestamp_str,
+                            context=trade_context,
+                        )
+                    except TypeError:
+                        self.paper_engine.open_position(execution_signal, current_price, timestamp_str)
+                else:
+                    current_signal = self.paper_engine.open_pos["signal"].lower()
+                    if current_signal != execution_signal:
+                        logger.info(
+                            f"TradeGate approved flip from {current_signal.upper()} to {execution_signal.upper()}"
+                        )
+                        close_result = self.paper_engine.close_position(current_price, timestamp_str)
+                        if close_result:
+                            context = close_result.get("context", {})
+                            self.trade_tracker.record_trade(
+                                profit_loss=close_result["pnl"],
+                                trade_id=close_result["trade_id"],
+                                signal=close_result["signal"],
+                                confidence=context.get("confidence"),
+                                regime=context.get("regime"),
+                                timestamp=close_result["exit_time"],
+                                pcr_value=context.get("pcr_value"),
+                                reason_code=context.get("reason_code"),
+                            )
+                        try:
+                            self.paper_engine.open_position(
+                                execution_signal,
+                                current_price,
+                                timestamp_str,
+                                context=trade_context,
+                            )
+                        except TypeError:
+                            self.paper_engine.open_position(execution_signal, current_price, timestamp_str)
+                    else:
+                        logger.info(
+                            f"TradeGate approved {gate_signal}; keeping existing execution open"
+                        )
+            else:
+                no_trade_meta = self.trade_tracker.record_decision(
+                    decision=trade_gate_result["decision"],
+                    reason=trade_gate_result["reason_code"],
+                    signal=signal,
+                    confidence=final_confidence,
+                    regime=regime,
+                    timestamp=timestamp_str,
+                    pcr_value=pcr_value,
+                    sample_every=5,
+                )
+                if no_trade_meta.get("should_log", False):
+                    logger.info(
+                        f"TradeGate NO_TRADE {trade_gate_result['reason_code']}: {trade_gate_result['reason']}"
+                    )
+                else:
+                    logger.debug(
+                        f"TradeGate NO_TRADE sampled {trade_gate_result['reason_code']} occurrence="
+                        f"{no_trade_meta['occurrence']}"
+                    )
+        except Exception as exc:
+            execution_action = "SKIP_SYSTEM_ERROR"
+            logger.error(f"Evaluation execution error: {exc}", exc_info=True)
+            self.trade_tracker.record_decision(
+                decision="NO_TRADE",
+                reason="SYSTEM_ERROR",
+                signal=signal,
+                confidence=final_confidence,
+                regime=regime,
+                timestamp=timestamp_str,
+                pcr_value=pcr_value,
+                sample_every=1,
+            )
         # ---------------------------------
 
 
         from src.data.db import log_agent_signals
-        import uuid
         import json
         cycle_id = str(uuid.uuid4())
         log_agent_signals(cycle_id=cycle_id, signals=agent_signals + [synthesis])
@@ -358,7 +479,20 @@ class MarketOrchestrator:
             final_confidence=final_confidence,
             source=source,
             agent_signals_json=signals_json,
+            trade_gate=trade_gate_result,
+            execution_action=execution_action,
         )
+
+        self._evaluation_cycle_counter += 1
+        if self._evaluation_cycle_counter % SUMMARY_EVERY_N_CYCLES == 0:
+            logger.info(
+                "Cycle Summary:\n"
+                f"- decision: {trade_gate_result.get('decision')}\n"
+                f"- reason_code: {trade_gate_result.get('reason_code')}\n"
+                f"- confidence: {final_confidence:.4f}\n"
+                f"- pcr_value: {pcr_value}\n"
+                f"- regime: {regime}"
+            )
 
         timestamp = self.loop.record_prediction(result)
         logger.info(f"Prediction recorded: {signal} at {timestamp}")

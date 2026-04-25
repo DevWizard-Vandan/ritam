@@ -1,7 +1,11 @@
 from dataclasses import dataclass
 from typing import Any
 import json
-from loguru import logger
+try:
+    from loguru import logger
+except ModuleNotFoundError:  # pragma: no cover - local fallback
+    import logging
+    logger = logging.getLogger(__name__)
 import yfinance as yf
 from datetime import datetime
 

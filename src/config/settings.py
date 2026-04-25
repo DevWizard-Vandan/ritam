@@ -7,6 +7,15 @@ except ModuleNotFoundError:  # pragma: no cover - environment fallback
 
 load_dotenv()
 
+
+def _normalize_db_path(raw_value: str | None) -> str:
+    value = (raw_value or "").strip()
+    if value.upper().startswith("DB_PATH="):
+        value = value.split("=", 1)[1].strip()
+    if "#" in value:
+        value = value.split("#", 1)[0].strip()
+    return value or "data/market.db"
+
 class Settings:
     PAPER_CAPITAL: float = 100000.0
     PAPER_LOT_SIZE: int = 50
@@ -44,7 +53,7 @@ class Settings:
     MARKET_CLOSE_TIME: str = "15:30"  # IST
     SCHEDULER_ENABLED: bool = os.getenv("SCHEDULER_ENABLED", "true").lower() == "true"
 
-    DB_PATH: str = os.getenv("DB_PATH", "data/market.db")
+    DB_PATH: str = _normalize_db_path(os.getenv("DB_PATH", "data/market.db"))
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     ENV: str = os.getenv("ENV", "development")
     NIFTY_SYMBOL: str = "NSE:NIFTY 50"

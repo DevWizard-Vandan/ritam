@@ -1,5 +1,6 @@
 import logging
 import math
+from uuid import uuid4
 from typing import Optional, Dict, Any
 from src.config.settings import settings
 from src.data.db import insert_paper_trade, get_paper_trade_stats
@@ -40,7 +41,13 @@ class PaperTradingEngine:
         except Exception as e:
             logger.warning(f"Could not load paper trading stats from DB: {e}")
 
-    def open_position(self, signal: str, price: float, timestamp: str) -> None:
+    def open_position(
+        self,
+        signal: str,
+        price: float,
+        timestamp: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """
         Opens a virtual position if signal is BUY or SELL and no existing position.
         Ignores HOLD signals.
@@ -54,23 +61,27 @@ class PaperTradingEngine:
             return
 
         self.open_pos = {
+            "trade_id": (context or {}).get("trade_id") or uuid4().hex,
             "signal": signal_upper,
             "entry_price": price,
-            "entry_time": timestamp
+            "entry_time": timestamp,
+            "context": context or {},
         }
         logger.info(f"Opened paper {signal_upper} position at {price} on {timestamp}")
 
-    def close_position(self, price: float, timestamp: str) -> None:
+    def close_position(self, price: float, timestamp: str) -> Optional[Dict[str, Any]]:
         """
         Closes active position, computes and records P&L, determines outcome.
         """
         if self.open_pos is None:
             logger.info("Cannot close position: No position is currently open.")
-            return
+            return None
 
         signal = self.open_pos["signal"]
         entry_price = self.open_pos["entry_price"]
         entry_time = self.open_pos["entry_time"]
+        trade_id = self.open_pos.get("trade_id")
+        context = self.open_pos.get("context", {})
 
         # Calculate P&L
         if signal == "BUY":
@@ -105,6 +116,17 @@ class PaperTradingEngine:
 
         # Clear open position
         self.open_pos = None
+        return {
+            "trade_id": trade_id,
+            "signal": signal,
+            "entry_price": entry_price,
+            "entry_time": entry_time,
+            "exit_price": price,
+            "exit_time": timestamp,
+            "pnl": pnl,
+            "outcome": outcome,
+            "context": context,
+        }
 
     def get_stats(self) -> dict:
         """

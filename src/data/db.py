@@ -13,6 +13,14 @@ except ModuleNotFoundError:  # pragma: no cover - environment fallback
 DB_MODE = os.getenv("DB_MODE", "sqlite")
 PLACEHOLDER = "%s" if DB_MODE == "postgres" else "?"
 
+if DB_MODE == "postgres":
+    try:
+        import psycopg2  # type: ignore
+    except ModuleNotFoundError:  # pragma: no cover - local fallback
+        logger.warning("psycopg2 unavailable; falling back to sqlite DB mode")
+        DB_MODE = "sqlite"
+        PLACEHOLDER = "?"
+
 def insert_or_ignore(conn, query, params):
     """
     Executes an INSERT, ignoring duplicate key errors.
@@ -88,15 +96,59 @@ class ConnectionWrapper:
         self.conn.close()
 
 if DB_MODE == "postgres":
-    import psycopg2
     DATABASE_URL = os.getenv("DATABASE_URL")
     def get_connection():
         return ConnectionWrapper(psycopg2.connect(DATABASE_URL))
 else:
     import sqlite3
+    def _sqlite_connection(path: str | None = None):
+        db_path = path or settings.DB_PATH
+        db_dir = os.path.dirname(db_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
+        return sqlite3.connect(db_path)
+
     def get_connection():
-        os.makedirs(os.path.dirname(settings.DB_PATH), exist_ok=True)
-        return sqlite3.connect(settings.DB_PATH)
+        return _sqlite_connection(settings.DB_PATH)
+
+
+DAILY_METRICS_DDL = """
+CREATE TABLE IF NOT EXISTS daily_metrics (
+    metric_date TEXT PRIMARY KEY,
+    trades INTEGER NOT NULL DEFAULT 0,
+    win_rate REAL NOT NULL DEFAULT 0.0,
+    expectancy REAL NOT NULL DEFAULT 0.0,
+    max_drawdown REAL NOT NULL DEFAULT 0.0,
+    top_no_trade_reason TEXT,
+    current_equity REAL NOT NULL DEFAULT 0.0,
+    no_trade_counts_json TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+EVALUATION_STATE_DDL = """
+CREATE TABLE IF NOT EXISTS evaluation_state (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    evaluation_start_date TEXT NOT NULL,
+    starting_equity REAL NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(evaluation_start_date)
+)
+"""
+
+
+def _ensure_daily_metrics_table(conn) -> None:
+    conn.execute(DAILY_METRICS_DDL)
+
+
+def _ensure_evaluation_state_table(conn) -> None:
+    conn.execute(EVALUATION_STATE_DDL)
+
+
+def _ensure_daily_metrics_table(conn) -> None:
+    conn.execute(DAILY_METRICS_DDL)
 
 
 def _pg_ddl(query: str) -> str:
@@ -152,7 +204,6 @@ def execute_ddl(conn, query):
 def init_db():
     """Create tables if they do not exist."""
     if DB_MODE == "postgres":
-        import psycopg2
         raw_conn = psycopg2.connect(DATABASE_URL)
         ddl_statements = [
             """
@@ -275,6 +326,30 @@ def init_db():
                 outcome TEXT,
                 sharpe_contribution REAL,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS daily_metrics (
+                metric_date TEXT PRIMARY KEY,
+                trades INTEGER NOT NULL DEFAULT 0,
+                win_rate REAL NOT NULL DEFAULT 0.0,
+                expectancy REAL NOT NULL DEFAULT 0.0,
+                max_drawdown REAL NOT NULL DEFAULT 0.0,
+                top_no_trade_reason TEXT,
+                current_equity REAL NOT NULL DEFAULT 0.0,
+                no_trade_counts_json TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS evaluation_state (
+                id SERIAL PRIMARY KEY,
+                evaluation_start_date TEXT NOT NULL,
+                starting_equity REAL NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(evaluation_start_date)
             )
             """,
             """
@@ -420,6 +495,30 @@ def init_db():
                 outcome TEXT,
                 sharpe_contribution REAL,
                 created_at TEXT DEFAULT (datetime('now'))
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS daily_metrics (
+                metric_date TEXT PRIMARY KEY,
+                trades INTEGER NOT NULL DEFAULT 0,
+                win_rate REAL NOT NULL DEFAULT 0.0,
+                expectancy REAL NOT NULL DEFAULT 0.0,
+                max_drawdown REAL NOT NULL DEFAULT 0.0,
+                top_no_trade_reason TEXT,
+                current_equity REAL NOT NULL DEFAULT 0.0,
+                no_trade_counts_json TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS evaluation_state (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                evaluation_start_date TEXT NOT NULL,
+                starting_equity REAL NOT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now')),
+                UNIQUE(evaluation_start_date)
             )
             """,
             """
@@ -711,6 +810,147 @@ def read_paper_trades(limit: int = 100) -> list[dict]:
         }
         for r in rows
     ]
+
+
+def upsert_daily_metrics(
+    metric_date: str,
+    trades: int,
+    win_rate: float,
+    expectancy: float,
+    max_drawdown: float,
+    top_no_trade_reason: str | None,
+    current_equity: float,
+    no_trade_counts_json: str | None,
+    db_path: str | None = None,
+) -> None:
+    """Insert or update a single daily evaluation summary row."""
+    if DB_MODE == "postgres" and db_path is None:
+        conn = get_connection()
+    else:
+        conn = _sqlite_connection(db_path)
+    with conn:
+        _ensure_daily_metrics_table(conn)
+        conn.execute(
+            """
+            INSERT INTO daily_metrics (
+                metric_date, trades, win_rate, expectancy, max_drawdown,
+                top_no_trade_reason, current_equity, no_trade_counts_json, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(metric_date) DO UPDATE SET
+                trades = excluded.trades,
+                win_rate = excluded.win_rate,
+                expectancy = excluded.expectancy,
+                max_drawdown = excluded.max_drawdown,
+                top_no_trade_reason = excluded.top_no_trade_reason,
+                current_equity = excluded.current_equity,
+                no_trade_counts_json = excluded.no_trade_counts_json,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                metric_date,
+                trades,
+                win_rate,
+                expectancy,
+                max_drawdown,
+                top_no_trade_reason,
+                current_equity,
+                no_trade_counts_json,
+            ),
+        )
+        conn.commit()
+
+
+def read_daily_metrics(limit: int = 30, db_path: str | None = None) -> list[dict]:
+    """Read the most recent daily evaluation summaries."""
+    if DB_MODE == "postgres" and db_path is None:
+        conn = get_connection()
+    else:
+        conn = _sqlite_connection(db_path)
+    with conn:
+        _ensure_daily_metrics_table(conn)
+        rows = conn.execute(
+            """
+            SELECT metric_date, trades, win_rate, expectancy, max_drawdown,
+                   top_no_trade_reason, current_equity, no_trade_counts_json,
+                   created_at, updated_at
+            FROM daily_metrics
+            ORDER BY metric_date DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [
+        {
+            "metric_date": r[0],
+            "trades": r[1],
+            "win_rate": r[2],
+            "expectancy": r[3],
+            "max_drawdown": r[4],
+            "top_no_trade_reason": r[5],
+            "current_equity": r[6],
+            "no_trade_counts_json": r[7],
+            "created_at": r[8],
+            "updated_at": r[9],
+        }
+        for r in rows
+    ]
+
+
+def get_latest_daily_metrics(db_path: str | None = None) -> dict | None:
+    rows = read_daily_metrics(limit=1, db_path=db_path)
+    return rows[0] if rows else None
+
+
+def upsert_evaluation_state(
+    evaluation_start_date: str,
+    starting_equity: float,
+    db_path: str | None = None,
+) -> None:
+    """Persist the evaluation run marker and baseline equity."""
+    if DB_MODE == "postgres" and db_path is None:
+        conn = get_connection()
+    else:
+        conn = _sqlite_connection(db_path)
+    with conn:
+        _ensure_evaluation_state_table(conn)
+        conn.execute(
+            """
+            INSERT INTO evaluation_state (
+                evaluation_start_date, starting_equity, updated_at
+            ) VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(evaluation_start_date) DO UPDATE SET
+                starting_equity = excluded.starting_equity,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (evaluation_start_date, starting_equity),
+        )
+        conn.commit()
+
+
+def read_evaluation_state(db_path: str | None = None) -> dict | None:
+    """Read the first persisted evaluation marker, if present."""
+    if DB_MODE == "postgres" and db_path is None:
+        conn = get_connection()
+    else:
+        conn = _sqlite_connection(db_path)
+    with conn:
+        _ensure_evaluation_state_table(conn)
+        row = conn.execute(
+            """
+            SELECT evaluation_start_date, starting_equity, created_at, updated_at
+            FROM evaluation_state
+            ORDER BY id ASC
+            LIMIT 1
+            """
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "evaluation_start_date": row[0],
+        "starting_equity": row[1],
+        "created_at": row[2],
+        "updated_at": row[3],
+    }
 
 
 def insert_sandbox_run(
