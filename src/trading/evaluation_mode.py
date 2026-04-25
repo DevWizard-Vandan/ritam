@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from src.config.settings import settings
-from src.data.db import (
+from src.data.db_eval_helpers import (
     read_daily_metrics,
     read_evaluation_state,
     upsert_daily_metrics,
