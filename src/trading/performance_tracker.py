@@ -11,7 +11,7 @@ from typing import Any, Iterator
 from uuid import uuid4
 
 from src.config.settings import settings
-from src.data.db import read_evaluation_state, upsert_evaluation_state
+from src.data.db_eval_helpers import read_evaluation_state, upsert_evaluation_state
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
