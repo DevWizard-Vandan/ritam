@@ -17,6 +17,7 @@ kiteconnect
 transformers==4.38.0
 torch==2.2.0
 sentencepiece==0.2.0
+vaderSentiment==3.3.2
 
 # Local LLM via Ollama (OpenAI-compatible API)
 openai==1.14.0
