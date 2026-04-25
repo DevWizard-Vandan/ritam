@@ -2,7 +2,12 @@ from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 from typing import Any
 import google.generativeai as genai
-from loguru import logger
+try:
+    from loguru import logger
+except ModuleNotFoundError:  # pragma: no cover - environment fallback
+    import logging
+
+    logger = logging.getLogger(__name__)
 
 @dataclass
 class AgentSignal:

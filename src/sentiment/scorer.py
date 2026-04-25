@@ -4,7 +4,12 @@ Downloads model once and caches locally in models/finbert/.
 """
 from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
 from src.sentiment.preprocessor import clean_headlines
-from loguru import logger
+try:
+    from loguru import logger
+except ModuleNotFoundError:  # pragma: no cover - environment fallback
+    import logging
+
+    logger = logging.getLogger(__name__)
 import os
 
 MODEL_PATH = "models/finbert"

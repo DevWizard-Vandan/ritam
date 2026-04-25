@@ -13,13 +13,19 @@ from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Header
 from fastapi.middleware.cors import CORSMiddleware
 import os
-import sentry_sdk
-from sentry_sdk.integrations.fastapi import FastApiIntegration
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+except ModuleNotFoundError:  # pragma: no cover - local fallback
+    sentry_sdk = None
+
+    class FastApiIntegration:  # type: ignore[override]
+        pass
 import src.orchestrator.agent as orch_agent
 from src.data.db import get_connection
 
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")
-if SENTRY_DSN:
+if SENTRY_DSN and sentry_sdk is not None:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         integrations=[FastApiIntegration()],
@@ -35,10 +41,24 @@ from src.data.db import read_candles, get_connection
 from src.config import settings
 from src.feedback.tracker import PredictionTracker
 from src.feedback.loop import FeedbackLoop
-from loguru import logger
+try:
+    from loguru import logger
+except ModuleNotFoundError:  # pragma: no cover - local fallback
+    import logging
+    logger = logging.getLogger(__name__)
 from src.reasoning.analog_finder import AnalogFinder
 import datetime as dt
 from src.backtest.signal_backtest import SignalBacktester
+from src.data.market_health import check_data_freshness
+from src.trading.evaluation_mode import (
+    ensure_evaluation_state,
+    export_trade_log,
+    generate_daily_summary,
+    get_system_metrics,
+    log_daily_snapshot,
+    log_startup_summary,
+    validate_system_ready,
+)
 
 scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
 scheduler_job_status = {}
@@ -122,6 +142,7 @@ async def lifespan(app: FastAPI):
     from src.data.db import init_db
     init_db()
     logger.info("Database initialized on startup.")
+    ensure_evaluation_state(settings.DB_PATH)
 
     if settings.SCHEDULER_ENABLED:
         scheduler.add_job(
@@ -186,9 +207,36 @@ async def lifespan(app: FastAPI):
             max_instances=1,
             coalesce=True,
         )
+        def daily_metrics_job():
+            try:
+                summary = generate_daily_summary()
+                log_daily_snapshot(summary)
+                logger.info(f"Daily metrics summary generated: {summary}")
+                scheduler_job_status["daily_metrics"] = "success"
+            except Exception as e:
+                logger.error(f"Daily metrics summary failed: {e}", exc_info=True)
+                scheduler_job_status["daily_metrics"] = "failed"
+
+        scheduler.add_job(
+            daily_metrics_job,
+            trigger=CronTrigger(
+                day_of_week="mon-fri",
+                hour=15,
+                minute=35,
+                timezone="Asia/Kolkata",
+            ),
+            id="daily_metrics",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
         if not scheduler.running:
             scheduler.start()
             logger.info("Scheduler started.")
+
+    ready_report = validate_system_ready(settings.DB_PATH, scheduler=scheduler if scheduler.running else None)
+    log_startup_summary(ready_report)
+    logger.info(f"Evaluation readiness status: {ready_report['status']}")
     yield
     if scheduler.running:
         scheduler.shutdown(wait=False)
@@ -460,6 +508,36 @@ def get_paper_stats():
     from src.paper_trading.engine import PaperTradingEngine
     engine = PaperTradingEngine()
     return engine.get_stats()
+
+
+@app.get("/api/data/health")
+def get_data_health():
+    return check_data_freshness()
+
+
+@app.get("/api/evaluation/metrics")
+def get_evaluation_metrics():
+    return get_system_metrics()
+
+
+@app.get("/api/evaluation/trades")
+def get_evaluation_trade_log(limit: int | None = None):
+    trade_log = export_trade_log()
+    if limit is not None and limit > 0:
+        return trade_log[-limit:]
+    return trade_log
+
+
+@app.post("/api/evaluation/daily-summary/run")
+def run_daily_summary(metric_date: str | None = None):
+    return generate_daily_summary(metric_date=metric_date)
+
+
+@app.get("/api/evaluation/daily/latest")
+def get_latest_daily_summary():
+    from src.data.db import get_latest_daily_metrics
+
+    return get_latest_daily_metrics()
 
 
 @app.get("/api/backtest/latest")

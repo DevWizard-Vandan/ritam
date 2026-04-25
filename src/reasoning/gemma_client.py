@@ -2,7 +2,12 @@
 Gemma 4 reasoning client via Ollama (OpenAI-compatible API).
 Falls back to Gemini 2.5 Flash API if Ollama is offline.
 """
-from loguru import logger
+try:
+    from loguru import logger
+except ModuleNotFoundError:  # pragma: no cover - environment fallback
+    import logging
+
+    logger = logging.getLogger(__name__)
 from src.config import settings
 
 def _call_flash_lite(prompt: str) -> str:

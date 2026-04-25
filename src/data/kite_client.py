@@ -13,7 +13,11 @@ from typing import Any
 import pandas as pd
 import pytz
 import yfinance as yf
-from loguru import logger
+try:
+    from loguru import logger
+except ModuleNotFoundError:  # pragma: no cover - environment fallback
+    import logging
+    logger = logging.getLogger(__name__)
 
 from src.config import settings
 
@@ -155,12 +159,15 @@ class YFinanceKiteClient:
 def get_client() -> Any:
     """Return a live Kite client when configured, otherwise yfinance fallback."""
     if _has_real_kite_credentials():
-        from kiteconnect import KiteConnect
+        try:
+            from kiteconnect import KiteConnect
 
-        kite = KiteConnect(api_key=settings.KITE_API_KEY)
-        kite.set_access_token(settings.KITE_ACCESS_TOKEN)
-        logger.info("Using real Kite Connect client (live data)")
-        return kite
+            kite = KiteConnect(api_key=settings.KITE_API_KEY)
+            kite.set_access_token(settings.KITE_ACCESS_TOKEN)
+            logger.info("Using real Kite Connect client (live data)")
+            return kite
+        except ModuleNotFoundError:
+            logger.warning("kiteconnect is not installed; using yfinance fallback")
 
     client = YFinanceKiteClient(
         api_key=settings.KITE_API_KEY,
@@ -168,3 +175,85 @@ def get_client() -> Any:
     )
     logger.info("Using yfinance fallback (no Kite credentials found)")
     return client
+
+
+def _resolve_symbol_to_ticker(symbol: str) -> str:
+    symbol = symbol.strip().upper()
+    mapping = {
+        "NSE:NIFTY 50": "^NSEI",
+        "NSE:NIFTY BANK": "^NSEBANK",
+    }
+    return mapping.get(symbol, "^NSEI")
+
+
+def fetch_current_price(
+    symbol: str = "NSE:NIFTY 50",
+    *,
+    retries: int = 2,
+    timeout_seconds: int = 5,
+) -> dict[str, Any]:
+    """
+    Fetch the current live price from Kite when available, otherwise yfinance.
+
+    Returns a small diagnostic payload so callers can see both the price and
+    which feed supplied it.
+    """
+    symbol = symbol.strip()
+    last_error: Exception | None = None
+
+    if _has_real_kite_credentials():
+        try:
+            from kiteconnect import KiteConnect
+
+            kite = KiteConnect(api_key=settings.KITE_API_KEY)
+            kite.set_access_token(settings.KITE_ACCESS_TOKEN)
+            quote = kite.quote([symbol])
+            payload = quote.get(symbol) or next(iter(quote.values()), {})
+            last_price = payload.get("last_price") or payload.get("lastPrice")
+            if last_price is not None:
+                return {
+                    "symbol": symbol,
+                    "source": "kite",
+                    "price": float(last_price),
+                    "status": "ok",
+                    "fetched_at": datetime.now(IST).isoformat(),
+                }
+        except ModuleNotFoundError as exc:
+            last_error = exc
+            logger.warning("kiteconnect is not installed; falling back to yfinance")
+        except Exception as exc:  # pragma: no cover - network dependent
+            last_error = exc
+            logger.warning(f"Kite quote fetch failed for {symbol}: {exc}")
+
+    ticker = _resolve_symbol_to_ticker(symbol)
+    for attempt in range(1, max(1, retries) + 1):
+        try:
+            frame = yf.download(
+                tickers=ticker,
+                period="1d",
+                interval="1m",
+                progress=False,
+                threads=False,
+            )
+            if frame is not None and not frame.empty:
+                last_row = frame.iloc[-1]
+                price = float(last_row["Close"])
+                return {
+                    "symbol": symbol,
+                    "source": "yfinance",
+                    "price": price,
+                    "status": "ok",
+                    "fetched_at": datetime.now(IST).isoformat(),
+                }
+        except Exception as exc:  # pragma: no cover - network dependent
+            last_error = exc
+            logger.warning(f"yfinance price fetch attempt {attempt}/{retries} failed: {exc}")
+
+    return {
+        "symbol": symbol,
+        "source": "unknown",
+        "price": None,
+        "status": "unavailable",
+        "error": str(last_error) if last_error else "price_unavailable",
+        "fetched_at": datetime.now(IST).isoformat(),
+    }

@@ -1,6 +1,10 @@
 """Manages active WebSocket connections for the RITAM dashboard."""
 from fastapi import WebSocket
-from loguru import logger
+try:
+    from loguru import logger
+except ModuleNotFoundError:  # pragma: no cover - local fallback
+    import logging
+    logger = logging.getLogger(__name__)
 
 
 class WebSocketManager:
