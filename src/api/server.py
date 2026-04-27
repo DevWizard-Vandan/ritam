@@ -12,6 +12,7 @@ from pathlib import Path
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 import os
 try:
     from loguru import logger
@@ -444,8 +445,9 @@ def get_intraday_stats():
         "resolution_mode": "intraday" if settings.USE_INTRADAY else "daily"
     }
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health_check():
+    """Health check endpoint. Accepts both GET and HEAD (for uptime monitors)."""
     db_status = "connected"
     try:
         with get_connection() as conn:
