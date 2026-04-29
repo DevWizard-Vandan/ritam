@@ -4,61 +4,46 @@
 
 ## Not prediction. Perception.
 
-**RITAM** is a self-improving multi-agent AI system for real-time Nifty 50 market intelligence.\
-Nine specialist agents act as sensors. Gemini 2.5 Flash acts as the reasoning brain.\
-The system gets smarter every week — automatically.
+**RITAM v2** is a multi-agent Nifty 50 intelligence system refactored into a disciplined intraday paper-trading evaluation stack.
 
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-111827?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-WebSocket_API-059669?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Gemini](https://img.shields.io/badge/LLM-Gemini_2.5_Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://deepmind.google/technologies/gemini/)
-[![FinBERT](https://img.shields.io/badge/Sentiment-FinBERT-7C3AED?style=for-the-badge)](https://huggingface.co/ProsusAI/finbert)
-[![SQLite](https://img.shields.io/badge/Storage-SQLite-1D4ED8?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
-[![Status](https://img.shields.io/badge/Status-Active_Development-F59E0B?style=for-the-badge)](#roadmap)
+Agents perceive the market. TradeGate decides if the prediction is tradable. PerformanceTracker measures whether the system has positive expectancy.
 
 </div>
 
 ---
 
-## The Idea
+## Current Runtime Flow
 
-Markets rarely move in isolation. They react to narrative, liquidity, volatility, policy, overnight cues, and memory.
-RITAM is built to capture that structure.
-
-Instead of treating market prediction as a single-model problem, RITAM is a layered intelligence system:
-
-- Ingests live Nifty 50 OHLCV data + Indian market headlines every 5 minutes
-- Scores sentiment with FinBERT
-- Reasons over all signals with Gemini 2.5 Flash (7-key rotation, effectively unlimited free throughput)
-- Searches history for comparable 15-minute market windows via cosine + DTW analog matching
-- Fuses 9 specialist agent signals into a BUY / SELL / HOLD with confidence
-- Resolves every prediction after 75 minutes and scores agent accuracy
-- Updates agent weights every Sunday via PPO reinforcement learning
-
-The system output:
-
-```json
-{
-  "timestamp": "2026-04-15T10:30:00+05:30",
-  "predicted_direction": "up",
-  "confidence": 0.74,
-  "timeframe_minutes": 15,
-  "regime": "trending_up",
-  "analog_similarity": 0.81,
-  "top_agents": ["FIIDerivativeAgent", "SentimentAgent"],
-  "explanation": "FII long buildup + positive macro sentiment matches Mar 2021 analog"
-}
+```text
+Data -> Agents -> Aggregator Prediction -> TradeGate -> Paper Execution or Skip -> Expectancy Tracking -> Evaluation Metrics
 ```
+
+RITAM is currently in paper-trading evaluation mode. The goal is not to tune; the goal is to collect clean 4-week evidence.
+
+Locked success criteria:
+
+| Metric | Target |
+|---|---:|
+| Expectancy | greater than Rs0.50 per Rs1 risked |
+| Win rate | greater than 45% |
+| Max daily drawdown | less than 5% |
+| Max total drawdown | less than 15% |
+| Evaluation period | 4 weeks, no parameter tuning |
 
 ---
 
-## Why It Stands Out
+## What It Does
 
-- **India-market native** — built around Nifty 50, GIFT Nifty, IST timing, Kite Connect
-- **9 specialist agents** — FII derivatives, options chain, sector rotation, market breadth, global markets, sentiment, regime, analogs, macro — running in parallel
-- **Gemini as the brain** — 7-key rotation means zero throttling, zero cost, Gemini-quality reasoning on every cycle
-- **Self-improving** — three compounding loops: RL weight updates, growing analog memory, Gemini in-context learning over prediction history
-- **Honest uncertainty** — when analog similarity is low and agents disagree, confidence drops and the system says so
-- **Rs500/month total cost** — only Kite Connect is paid
+- Ingests Nifty market data from Kite Connect when configured, with yfinance fallback for local/dev use.
+- Ingests news from NewsAPI and RSS feeds.
+- Runs 9 specialist agents covering sentiment, regime, analogs, macro, options, FII, sector, breadth, and global cues.
+- Uses Gemini 2.5 Flash with 7-key rotation for reasoning and Gemini Flash-Lite for quick tasks.
+- Uses FinBERT for financial headline sentiment.
+- Produces prediction/confidence/regime context.
+- Applies deterministic TradeGate rules before any paper trade.
+- Fetches Nifty PCR from NSE and applies deterministic neutral/penalty/extreme handling.
+- Tracks paper trades, skipped decisions, equity, expectancy, win rate, and drawdown in SQLite.
+- Exposes API endpoints for data freshness, evaluation metrics, trade journal export, and daily summaries.
 
 ---
 
@@ -66,102 +51,77 @@ The system output:
 
 ```mermaid
 flowchart TD
-    A["Data Perception\nKite Connect 15-min OHLCV + News Headlines"] --> B["9 Specialist Agents\nFII · Options · Sector · Breadth · Global · Sentiment · Regime · Analog · Macro"]
-    B --> C["Gemini 2.5 Flash Brain\n7-key rotation · full reasoning every cycle"]
-    C --> D["Signal Fusion\nRL-weighted aggregation → BUY / SELL / HOLD + confidence"]
-    D --> E["Prediction Store\nSQLite · resolved after 75 min · accuracy scored"]
-    E --> F["RL Weight Updater\nPPO · every Sunday 00:00 IST"]
-    F --> B
+    A["Market Data: Kite/yfinance candles + News + NSE PCR"] --> B["9 Agents: Sentiment, Regime, Analog, Macro, Options, FII, Sector, Breadth, Global"]
+    B --> C["Aggregator: Direction + confidence + regime"]
+    C --> D["TradeGate: Time, regime, confidence, PCR"]
+    D -->|TRADE| E["PaperTradingEngine: Virtual CALL/PUT execution"]
+    D -->|NO_TRADE| F["Decision Log: Reason-code visibility"]
+    E --> G["PerformanceTracker: Trades, equity, expectancy, drawdown"]
+    F --> G
+    G --> H["Evaluation API: Metrics, daily summary, trade export"]
 ```
 
-### Core Stack
+---
 
-| Area | Tools |
+## Core Modules
+
+| Path | Responsibility |
 |---|---|
-| Language | Python 3.11+ |
-| Market data | Zerodha Kite Connect + yfinance fallback |
-| Sentiment | FinBERT |
-| LLM reasoning | Gemini 2.5 Flash / Flash-Lite (7-key rotation) |
-| Analog matching | Cosine similarity + DTW |
-| Reinforcement learning | Stable-Baselines3 PPO |
-| Scheduler | APScheduler (5-min cycles) |
-| Storage | SQLite → PostgreSQL at deploy |
-| API | FastAPI + WebSockets |
-| Frontend | React + Vite + TypeScript + Tailwind CSS |
+| `src/orchestrator/agent.py` | Main cycle: agents -> TradeGate -> paper execution/skip |
+| `src/trading/trade_gate.py` | Deterministic TRADE/NO_TRADE decision engine |
+| `src/trading/pcr_fetcher.py` | NSE option-chain PCR fetcher with headers, retries, TTL cache, stale detection |
+| `src/trading/performance_tracker.py` | SQLite trade/decision journal, expectancy, win rate, drawdown |
+| `src/trading/evaluation_mode.py` | Metrics snapshot, daily summaries, readiness validation, safeguards |
+| `src/trading/evaluation_config.py` | Frozen evaluation constants |
+| `src/data/market_health.py` | Data freshness and source diagnostics |
+| `src/data/kite_client.py` | Kite Connect integration with yfinance fallback |
+| `src/api/server.py` | FastAPI, scheduler, startup checks, API endpoints, WebSocket |
+| `src/paper_trading/engine.py` | Local virtual paper trading engine |
 
 ---
 
-## What’s Live Today
+## TradeGate Rules
 
-| Layer | What It Does | Status |
-|---|---|---|
-| Core | 9 agents + orchestrator + Gemini brain | ✅ Live |
-| L0 | Gemini 7-key rotation with fallback chain | ✅ Live |
-| L1 | APScheduler — prediction cycle every 5 min | ✅ Live |
-| L2 | 9 macro agents in parallel execution | ✅ Live |
-| L3 | 15-min intraday analog finder (20-candle windows, 5-candle outcomes) | ✅ Live |
-| L4 | RL weight updater — per-agent accuracy tracked, weights updated weekly | ✅ Live |
-| L5 | Paper trading engine — virtual P&L track record | 🔄 In progress |
-| L6 | Signal quality + 3-month backtest + walk-forward validation | ⏳ Next |
-| L7 | Live prediction chart — 15-min ahead, self-correcting, confidence meter | ⏳ Planned |
-| L8 | Sandbox — “What If” Time Machine | ⏳ Planned |
-| L9 | Landing page + waitlist + invite-only deploy | ⏳ Planned |
-| L10 | Public pricing + launch | ⏳ Planned |
+TradeGate blocks a trade when:
 
----
+- Regime is not one of `trending_up` or `trending_down`.
+- Current time is 09:15-09:30 IST or 15:00-15:30 IST.
+- Adjusted confidence is below `0.65`.
+- PCR is extreme outside deterministic safety bands.
+- Evaluation safety guards report a system error or PCR has been unavailable too long.
 
-## Repository Map
+PCR behavior:
 
-```text
-src/
-  api/              FastAPI server, WebSocket, all endpoints
-  agents/           9 specialist agents + signal aggregator
-  backtest/         Backtrader baseline engine
-  config/           settings, agent weight config
-  data/             Kite + yfinance, intraday seeder, news fetcher, DB helpers
-  feedback/         prediction/outcome tracker
-  learning/         intraday resolver, RL weight updater, accuracy calculator
-  orchestrator/     MarketOrchestrator.run_cycle() — main prediction loop
-  paper_trading/    virtual position tracker, P&L engine (L5)
-  reasoning/        analog finder (daily + intraday), regime classifier
-  rl/               PPO environment and trainer
-  sentiment/        headline preprocessor, FinBERT scorer
-frontend/           React dashboard (Signal, Accuracy, Analogs, Explanation, AgentWeights)
-tests/              unit + integration tests across all modules
-scripts/            seed_historical.py, seed_intraday.py, verify_db.py
-reports/            backtest HTML reports (generated)
-config/             agent_weights.json baseline
-```
+| PCR Range | Behavior |
+|---|---|
+| `0.8 <= PCR <= 1.3` | Neutral, no confidence penalty |
+| Near outer bands | Deterministic confidence penalty |
+| Extreme | NO_TRADE |
+| Unavailable briefly | Neutral fallback, explicitly logged |
+| Unavailable too long | Safety skip |
+
+Strategy thresholds are frozen during evaluation.
 
 ---
 
 ## Quick Start
 
-### 1. Clone and create a virtual environment
+### 1. Create and activate a virtual environment
 
-```bash
-git clone https://github.com/DevWizard-Vandan/ritam
-cd ritam
+```powershell
 python -m venv venv
-```
-
-Activate:
-
-```bash
-# Windows PowerShell
 venv\Scripts\Activate.ps1
-
-# macOS / Linux
-source venv/bin/activate
 ```
 
 ### 2. Install dependencies
 
-```bash
+```powershell
 pip install -r requirements.txt
 ```
 
-### 3. Create your `.env`
+### 3. Configure `.env`
+
+Keep secrets only in `.env` or deployment secrets.
 
 ```env
 KITE_API_KEY=
@@ -175,129 +135,128 @@ GEMINI_API_KEY_4=
 GEMINI_API_KEY_5=
 GEMINI_API_KEY_6=
 GEMINI_API_KEY_7=
-DB_PATH=data/market.db
+DB_PATH=ritam.db
 LOG_LEVEL=INFO
 ENV=development
 PAPER_CAPITAL=100000
 PAPER_LOT_SIZE=50
 ```
 
-> Never hardcode API keys. `.env` only.
+### 4. Initialize database
 
-### 4. Initialize the database
-
-```bash
+```powershell
 python -c "from src.data.db import init_db; init_db()"
 ```
 
-### 5. Seed historical data
+### 5. Seed data if needed
 
-```bash
+```powershell
 python scripts/seed_historical.py
 python scripts/seed_intraday.py
 ```
 
-### 6. Run the server
+### 6. Start API
 
-```bash
+```powershell
 uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 7. Run the dashboard
+### 7. Start frontend
 
-```bash
+```powershell
 cd frontend
-np install
+npm install
 npm run dev
 ```
 
-Dashboard at `http://localhost:5173`.
+Frontend runs at `http://localhost:5173`.
 
 ### 8. Run tests
 
-```bash
-pytest tests/ -v
+```powershell
+python -m pytest tests/ -q
 ```
 
 ---
 
-## API Endpoints
+## Essential Monitoring Endpoints
 
-| Method | Endpoint | Description |
+| Method | Endpoint | What to Check |
 |---|---|---|
-| GET | `/api/candles` | Latest daily candles |
-| GET | `/api/prediction` | Latest signal, regime, sentiment, explanation, confidence |
-| GET | `/api/agents/stats` | Per-agent weights, 7d/30d accuracy, total predictions |
-| GET | `/api/weights/history` | Weight history for a given agent |
-| GET | `/api/feedback/accuracy` | Overall prediction accuracy stats |
-| GET | `/api/analogs` | Last 3 historical analogs with similarity scores |
-| GET | `/api/intraday/candles` | Latest 15-min intraday candles |
-| GET | `/api/intraday/stats` | Intraday sync stats |
-| GET | `/api/paper/trades` | Last 50 paper trades |
-| GET | `/api/paper/stats` | Win rate, total P&L, Sharpe ratio, open position |
-| GET | `/api/backtest/latest` | Latest backtest result as JSON |
-| POST | `/api/weights/update` | Manually trigger RL weight update |
-| WS | `/ws/predictions` | Real-time signal stream |
+| GET | `/health` | API process is alive |
+| GET | `/api/scheduler/status` | Scheduler is running |
+| GET | `/api/data/health` | Data source, last candle timestamp, delay, OK/STALE |
+| GET | `/api/evaluation/metrics` | Trades, win rate, expectancy, drawdown, equity, NO_TRADE reasons |
+| GET | `/api/evaluation/daily/latest` | Latest end-of-day summary |
+| GET | `/api/evaluation/trades` | Manual trade journal review |
+| GET | `/api/paper/trades` | Paper trade history |
+| GET | `/api/paper/stats` | Paper P&L and open position state |
+| WS | `/ws/predictions` | Live cycle stream |
 
 ---
 
-## The Bigger Vision
+## Healthy Day-1 Behavior
 
-### L7 — Live Prediction Chart
-A live candlestick chart that stays 15 minutes ahead of the market, continuously self-corrects, and shows a confidence band. Pre-market predictions at 9:00 AM using GIFT Nifty + global overnight cues. Regime badge, event overlay, agent signal bars.
-
-### L8 — The Sandbox: “What If” Time Machine
-The most powerful feature. Pick any date in history, add a condition (“What if RBI cut rates by 1% unexpectedly”), and watch the system animate a predicted Nifty path in real time using analog matching + regime classification + macro reasoning. No retail tool does this.
-
-### L9 — Invite-Only Launch
-A landing page with a waitlist, a 60-second demo video, and a curated Discord for early users. Daily signals posted automatically to `#predictions`. Early users shape which sandbox scenarios get built first.
-
-### L10 — Public Launch
-Tiered access: free = delayed signals, paid = live signals + sandbox. API access for developers.
+- Data health is `OK` during market hours.
+- TradeGate logs structured TRADE/NO_TRADE decisions.
+- First 15 minutes and last 30 minutes should normally produce `NO_TRADE` due restricted windows.
+- Zero trades can be normal if regime/confidence/PCR conditions are not aligned.
+- One losing trade is not meaningful by itself.
+- More than 3 trades in a day should raise a warning, not trigger tuning.
+- Repeated `SYSTEM_ERROR`, stale data, or missing PCR beyond the safety window requires investigation.
 
 ---
 
-## Self-Improvement Loops
+## Repository Map
 
-RITAM gets measurably smarter over time through three compounding mechanisms:
-
-1. **RL weight updates** — agents that were right last week get more voting power. Agents that were wrong get suppressed. Fires every Sunday automatically.
-2. **Analog memory growth** — every resolved prediction adds to the historical pattern library. More history = better analog matches = better predictions.
-3. **Gemini in-context learning** — recent prediction history + outcomes are passed to Gemini on each cycle. No fine-tuning cost. The brain reasons better as evidence accumulates.
+```text
+src/
+  agents/           9 specialist agents and aggregator
+  api/              FastAPI server, scheduler, WebSocket, endpoints
+  backtest/         Backtrader baseline engine
+  config/           settings and constants
+  data/             Kite/yfinance, news, DB, market health
+  feedback/         prediction/outcome tracking
+  learning/         resolver, RL weight updater, accuracy calculator
+  orchestrator/     MarketOrchestrator runtime cycle
+  paper_trading/    virtual execution engine
+  reasoning/        Gemini client, analog finder, regime classifier
+  rl/               PPO environment and trainer
+  sentiment/        headline preprocessing and FinBERT scoring
+  trading/          TradeGate, PCR, expectancy, evaluation mode
+frontend/           React dashboard
+tests/              unit and integration tests
+scripts/            data seeding and verification scripts
+config/             agent weight configuration
+```
 
 ---
 
 ## Developer Rules
 
-Before touching anything:
+Before structural work:
 
-1. Read `AGENTS.md` — architecture bible, never modify
-2. Read `STATUS.md` — always update after work
-3. Read `DECISIONS.md` — 11 ADRs, never modify
-4. API keys in `.env` only — never hardcoded
-5. Every new module needs a test file in `tests/`
-6. Branch naming: `feature/module-name`
-7. DB changes must be additive — no ALTER on existing tables
+1. Read `AGENTS.md`.
+2. Read `STATUS.md`.
+3. Read `DECISIONS.md`.
+4. Do not edit `.env`.
+5. Add tests for new modules.
+6. Keep DB changes additive.
+7. Do not tune strategy parameters during evaluation mode.
+8. Update `STATUS.md` when work is complete.
 
 ---
 
 ## Monthly Cost
 
 | Tool | Cost |
-|---|---|
-| Kite Connect | Rs500 |
-| Gemini API (7 keys, free tier) | Rs0 |
-| Jules / Copilot / Codex | Rs0 |
-| **Total** | **Rs500** |
+|---|---:|
+| Kite Connect | Rs500/month |
+| Gemini API via free-tier key rotation | Rs0 |
+| Local FinBERT | Rs0 |
+| SQLite local evaluation | Rs0 |
+| Total | Rs500/month |
 
 ---
 
-<div align="center">
-
-RITAM treats markets as structured behavior, not noise.\
-News, volatility, analog history, and agent disagreement are first-class signals.\
-The goal is not just “up” or “down” — but *why*, *how strongly*, *in what regime*, and *what history says next*.
-
-**Built by [Vandan Sharma](https://github.com/DevWizard-Vandan)**
-
-</div>
+RITAM now measures what matters: not just whether an agent can predict direction, but whether the full decision loop produces positive expectancy under disciplined constraints.

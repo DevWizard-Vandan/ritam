@@ -1,194 +1,219 @@
-﻿# RITAM - Project Status
-# Last Updated: April 26, 2026 — Render startup hardening
+# RITAM - Project Status
+# Last Updated: April 29, 2026 - v2 documentation realignment
 # Updating Agent: Codex
 
 ---
 
-## Vision
-**"Not prediction. Perception."**
-Self-improving multi-agent AI system for real-time Nifty 50 prediction.
-9 specialist agents act as sensors. Gemini 2.5 Flash (7-key rotation) acts as the reasoning brain.
-The system gets smarter every week via RL weight updates and grows its analog memory with every resolved prediction.
+## Current State
 
----
+RITAM v2 has been refactored from a prediction-only system into an intraday paper-trading evaluation system.
 
-## Architecture Notes
-- **LLM Brain:** Gemini 2.5 Flash (primary) + Gemini Flash-Lite (quick reasoning). Gemma/Ollama fully removed.
-- **Key Rotation:** 7 Google account Gemini API keys with round-robin fallback â€” effectively unlimited free throughput, exceeds paid tier.
-- **9 Agents:** FIIDerivativeAgent, OptionsChainAgent, SectorRotationAgent, MarketBreadthAgent, GlobalMarketAgent, SentimentAgent, RegimeClassifierAgent, AnalogAgent, MacroAgent â€” run in parallel every cycle.
-- **Prediction cycle:** Every 5 minutes (reducible to 1-min in future â€” compute is not the bottleneck, only Kite API rate limits).
-- **Self-improvement loops:**
-  1. Weekly RL weight update (PPO, every Sunday 00:00 IST) â€” right agents get more voting power
-  2. Analog memory growth â€” every resolved prediction adds to historical pattern library
-  3. Gemini in-context learning â€” reasoning over recent prediction history + outcomes
-- **Recalibration:** Currently weekly. Future: emergency re-weight on 3 consecutive wrong calls or regime flip.
+Active flow:
+
+```text
+Data -> Agents -> Aggregator Prediction -> TradeGate -> Paper Execution or Skip -> Expectancy Tracking -> Evaluation Metrics
+```
+
+The system is in launch/evaluation preparation state. Strategy thresholds are frozen. The next operational goal is clean 4-week paper-trading evidence, not optimization.
 
 ---
 
 ## Completed
-- [x] Project scaffold (v2 architecture)
-- [x] `AGENTS.md` â€” full v2 vision and architecture
-- [x] `DECISIONS.md` â€” 11 ADRs documented
-- [x] `src/config/settings.py` â€” env loader + `PAPER_CAPITAL`, `PAPER_LOT_SIZE`
-- [x] `src/data/kite_client.py` â€” Kite Connect + yfinance fallback
-- [x] `src/data/db.py` â€” SQLite helpers (candles, intraday, news, predictions, agent weights, paper trades)
-- [x] `src/data/kite_feed.py` â€” OHLCV fetcher with chunked date range seeding
-- [x] `src/data/news_fetcher.py` â€” NewsAPI + RSS ingestion, APScheduler job, `news_raw` table
-- [x] `src/data/intraday_seeder.py` â€” 15-min candle incremental sync, runs on server startup
-- [x] `src/sentiment/preprocessor.py` â€” headline cleaner
-- [x] `src/sentiment/scorer.py` â€” FinBERT scorer
-- [x] `src/reasoning/analog_finder.py` â€” `find_analogs()` (daily) + `find_intraday_analogs()` (15-min, 20-candle window, 5-candle outcome)
-- [x] `src/reasoning/regime_classifier.py` â€” Gemini-powered regime classifier
-- [x] `src/agents/analog_agent.py` â€” intraday/daily fallback routing (â‰¥20 candles â†’ intraday, else daily)
-- [x] `src/agents/aggregator.py` â€” master signal aggregator
-- [x] `src/orchestrator/agent.py` â€” `MarketOrchestrator.run_cycle()` wired to PaperTradingEngine
-- [x] `src/learning/intraday_resolver.py` â€” resolves predictions after 5 candles (75 min), sets `resolved=1` + `signal`
-- [x] `src/learning/weight_updater.py` â€” RL weight update (Sunday 00:00 IST), normalize + clamp
-- [x] `src/learning/accuracy_calculator.py` â€” per-agent 7d + 30d accuracy windows
-- [x] `src/feedback/tracker.py` â€” prediction/outcome tracker, `feedback_predictions` table
-- [x] `src/paper_trading/engine.py` â€” `PaperTradingEngine` class (open/close/get_stats), single position, no pyramiding
-- [x] `paper_trades` DB table â€” signal, entry/exit price+time, P&L, outcome, Sharpe contribution
-- [x] `src/api/server.py` â€” FastAPI + WebSocket + APScheduler + all endpoints incl. `/api/paper/trades` + `/api/paper/stats`
-- [x] `src/api/websocket_manager.py` â€” WebSocket connection manager
-- [x] `src/rl/trading_env.py` â€” Gymnasium `NiftyTradingEnv`
-- [x] `src/rl/trainer.py` â€” PPO training pipeline
-- [x] `src/backtest/engine.py` â€” Backtrader engine (SMA crossover baseline)
-- [x] `config/agent_weights.json` â€” baseline equal weights (DB overrides on every cycle)
-- [x] `frontend/` â€” React + Vite + TypeScript + Tailwind CSS dashboard
-  - SignalPanel (WebSocket primary, 30s REST fallback, WS/REST badge)
-  - AccuracyPanel (wired to `/api/feedback/accuracy`)
-  - AnalogPanel, ExplanationPanel
-  - AgentWeightsPanel (weight bars, 7d/30d accuracy, sorted by weight desc)
-  - PredictionChart (lightweight-charts candlesticks, prediction zone, confidence meter, live regime badge)
-  - `VITE_API_BASE_URL` env var â€” no hardcoded localhost
-- [x] `frontend/.env.example` â€” environment config template
-- [x] `frontend/` Sandbox UI â€” tab toggle, timeline slider + milestones, animated scenario chart, confidence bar, sandbox API integration
-- [x] `frontend/` dashboard redesign â€” premium light theme, Inter typography, Framer Motion transitions, white chart surfaces, refreshed sandbox controls, and unified card styling
-- [x] `frontend/` auth + settings enhancement â€” login page gate added, settings tab added, dark mode switch with local persistence, and logout flow to return to login
-- [x] All agent runtime hotfixes (SectorRotation, OptionsChain, MarketBreadth, GlobalMarket)
-- [x] `scripts/seed_historical.py`, `scripts/verify_db.py`, `scripts/seed_intraday.py`
-- [x] Full test suite across all modules incl. `tests/paper_trading/test_engine.py`
-- [x] PostgreSQL compatibility hotfixes â€” startup `init_db()` in API lifespan, cross-DB insert-ignore handling, `news_raw` partial dedup indexes, and positional `executemany` args for DB wrapper compatibility
-- [x] `src/trading/` Phase 1 â€” deterministic `TradeGate`, NSE PCR fetcher with retries/cache, and SQLite `PerformanceTracker`
-- [x] `tests/trading/` coverage for PCR caching/retries, trade gating, and expectancy/drawdown tracking
-- [x] `src/orchestrator/agent.py` â€” TradeGate integration between synthesis and execution, with sampled `NO_TRADE` logging
-- [x] `tests/orchestrator/test_trade_gate_integration.py` â€” verifies trade execution/skip wiring
-- [x] `src/trading/` evaluation mode â€” metrics snapshot, daily summary generator, trade journal export, frozen evaluation config, and safety guardrails
-- [x] `src/data/db.py` â€” `daily_metrics` table + SQLite-safe helpers for evaluation summaries
-- [x] `src/api/server.py` â€” evaluation endpoints for metrics, trade export, and daily summary generation
-- [x] `src/api/server.py` â€” data health endpoint for live candle freshness monitoring
-- [x] `tests/trading/test_evaluation_mode.py` â€” evaluation metrics, daily summary, journal export, and safety guardrails
-- [x] `src/data/market_health.py` + `tests/data/test_market_health.py` â€” freshness checks, live quote fallback, and stale-data detection
-- [x] local import fallbacks â€” `psycopg2`, `sentry_sdk`, and `loguru` fallbacks added where needed for evaluation runtime
-- [x] final launch checks â€” `validate_system_ready()`, first-run marker, startup summary log, and daily summary snapshot log
-- [x] Render startup hardening â€” FastAPI lifespan startup steps now log and degrade instead of crashing, external readiness I/O is skipped during startup, missing DB helper exports restored, and evaluation helpers import from `db_eval_helpers`
+
+### Core Intelligence
+
+- [x] 9-agent architecture implemented
+- [x] Gemini 2.5 Flash 7-key rotation implemented
+- [x] Gemini Flash-Lite quick reasoning path available
+- [x] FinBERT sentiment pipeline implemented
+- [x] Regime classifier implemented
+- [x] Analog finder supports daily and intraday 15-minute analogs
+- [x] Aggregator fuses agent outputs
+- [x] Prediction output format governed by ADR-005
+
+### Data Pipeline
+
+- [x] Kite Connect client path implemented
+- [x] yfinance fallback implemented for local/dev resilience
+- [x] Intraday candle seeding/sync implemented
+- [x] NewsAPI + RSS ingestion implemented
+- [x] NSE PCR fetcher implemented with browser headers, retries, TTL cache, and stale detection
+- [x] Data freshness health check implemented in `src/data/market_health.py`
+- [x] `/api/data/health` endpoint implemented
+
+### Trading Layer
+
+- [x] `src/trading/trade_gate.py` implemented
+- [x] Valid trading regimes explicitly defined: `trending_up`, `trending_down`
+- [x] Restricted trade windows enforced: 09:15-09:30 IST and 15:00-15:30 IST
+- [x] Confidence threshold frozen at `0.65`
+- [x] PCR neutral/penalty/extreme handling deterministic
+- [x] Structured TradeGate output with `decision`, `reason_code`, `reason`, `signal`, and `details`
+- [x] `src/orchestrator/agent.py` routes `Agents -> TradeGate -> Execution or Skip`
+- [x] TradeGate does not modify agent logic
+
+### Paper Execution and Tracking
+
+- [x] Local `PaperTradingEngine` implemented
+- [x] Virtual execution only; no live broker order placement
+- [x] `PerformanceTracker` persists trades and NO_TRADE decisions
+- [x] Trade journal includes trade ID, timestamp, signal, confidence, regime, PCR, decision, P&L, and equity-after
+- [x] Expectancy, win rate, average win/loss, daily metrics, and drawdown calculated
+- [x] NO_TRADE logging sampled/aggregated to avoid excessive log volume
+
+### Evaluation Mode
+
+- [x] `src/trading/evaluation_config.py` created with frozen constants
+- [x] `NO_TWEAK_MODE = True`
+- [x] `MAX_TRADES_PER_DAY = 3` safety warning implemented
+- [x] PCR unavailable-too-long guard implemented
+- [x] `get_system_metrics()` implemented
+- [x] `generate_daily_summary()` implemented
+- [x] `export_trade_log()` implemented
+- [x] `validate_system_ready()` implemented
+- [x] First-run marker records evaluation start date and starting equity
+- [x] Startup summary logging implemented
+- [x] Daily summary snapshot logging implemented
+- [x] `daily_metrics` and `evaluation_state` persistence implemented
+
+### API and Runtime
+
+- [x] FastAPI server implemented
+- [x] APScheduler integration implemented
+- [x] WebSocket prediction stream implemented
+- [x] Evaluation endpoints implemented:
+  - [x] `GET /api/evaluation/metrics`
+  - [x] `GET /api/evaluation/trades`
+  - [x] `GET /api/evaluation/daily/latest`
+  - [x] `POST /api/evaluation/daily-summary/run`
+- [x] Paper endpoints implemented:
+  - [x] `GET /api/paper/trades`
+  - [x] `GET /api/paper/stats`
+- [x] Scheduler status endpoint implemented
+- [x] Render/startup hardening added so optional external readiness checks do not crash startup
+
+### Dashboard and Supporting Layers
+
+- [x] React + Vite + TypeScript frontend exists
+- [x] Signal, accuracy, analog, explanation, agent weights, chart, and sandbox UI components exist
+- [x] Backtest engine exists
+- [x] RL environment/trainer exists
+- [x] Weekly RL weight updater exists
+
+### Documentation
+
+- [x] `AGENTS.md` realigned to current trading/evaluation architecture
+- [x] `README.md` realigned to current runtime flow and endpoints
+- [x] `DECISIONS.md` updated with trading/evaluation ADRs
+- [x] `DEPLOY.md` expanded for local/evaluation/deployment operations
+- [x] `STATUS.md` updated for v2 paper-trading evaluation state
+
+---
+
+## Frozen Evaluation Constants
+
+| Constant | Value |
+|---|---:|
+| `CONFIDENCE_THRESHOLD` | `0.65` |
+| `PCR_BANDS` | `(0.8, 1.3)` |
+| `NO_TWEAK_MODE` | `True` |
+| `MAX_TRADES_PER_DAY` | `3` |
+| `PCR_UNAVAILABLE_MAX_MINUTES` | `30` |
+| `SUMMARY_EVERY_N_CYCLES` | `5` |
+
+Do not change these during the 4-week evaluation unless the system is formally stopped for a safety incident.
 
 ---
 
 ## Layer Status
 
-| Layer | Name | Status | PR |
-|---|---|---|---|
-| Core | 9 Agents + Orchestrator + Gemini Brain | âœ… Done | â€” |
-| L0 | Gemini 7-Key Rotation | âœ… Done | PR #31 |
-| L1 | Auto-Scheduler (5-min cycles) | âœ… Done | â€” |
-| L2 | 9 Macro Agents Parallel | âœ… Done | â€” |
-| L3 | 15-min Intraday Analog Finder | âœ… Done | PR #44 |
-| L4 | RL Weight Updater | âœ… Done | PR #41 |
-| L5 | Paper Trading Engine | âœ… Done | PR #45 |
-| L6 | Signal Quality + Backtesting | âœ… Done | Codex |
-| L7 | Live Prediction Chart Dashboard | âœ… Done | Copilot |
-| L8 | Sandbox â€” "What If" Time Machine | âœ… Frontend Complete | Copilot |
-| L9 | Landing Page + Waitlist + Invite Deploy | âœ… Done | â€” |
-| L10 | Public Pricing + Launch | â³ Pending | â€” |
+| Layer | Name | Status |
+|---|---|---|
+| Core | 9 agents + orchestrator + Gemini brain | Done |
+| L0 | Gemini 7-key rotation | Done |
+| L1 | Auto-scheduler | Done |
+| L2 | 9 macro/market agents | Done |
+| L3 | 15-minute intraday analog finder | Done |
+| L4 | RL weight updater | Done |
+| L5 | Paper trading engine | Done |
+| L6 | Signal quality + backtesting | Done |
+| L7 | Live prediction dashboard | Done/iterating |
+| L8 | Sandbox - What If Time Machine | Frontend complete / backend present |
+| Trading v2 | TradeGate + PCR + expectancy | Done |
+| Evaluation | Metrics + daily summary + safeguards | Done |
+| Launch | Data health + readiness checks | Done |
 
 ---
 
-## In Progress
-- Nothing currently. Evaluation mode is wired and validated.
+## Current Operational Mode
+
+- Backend: FastAPI + scheduler + WebSocket
+- Execution: paper trading only
+- Data: Kite preferred, yfinance fallback available
+- News: NewsAPI + RSS fallback
+- PCR: NSE option-chain endpoint
+- Storage: SQLite locally; PostgreSQL-compatible helpers for deployment path
+- Monitoring: API/logs first, dashboard optional
 
 ---
 
-## Pending Layer Definitions
+## Essential Endpoints
 
-### L6 â€” Signal Quality + Backtesting *(Codex)*
-- Run 3-month historical backtest on `feedback_predictions` where `resolved=1`
-- Compare RL-weighted accuracy vs equal-weight baseline
-- Metrics: win rate, Sharpe ratio, max drawdown, equity curve
-- Report: `reports/backtest_YYYY-MM-DD.html` (self-contained, no CDN)
-- Walk-forward validation: re-weight weekly, test next week
-- CLI: `python scripts/run_backtest.py --from 2026-01-01 --to 2026-04-16`
-- Endpoint: `GET /api/backtest/latest`
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | API health |
+| `GET /api/scheduler/status` | Scheduler active state |
+| `GET /api/data/health` | Live/cached data freshness |
+| `GET /api/evaluation/metrics` | Evaluation metrics snapshot |
+| `GET /api/evaluation/daily/latest` | Latest daily summary |
+| `GET /api/evaluation/trades` | Trade journal export |
+| `GET /api/paper/trades` | Paper trade list |
+| `GET /api/paper/stats` | Paper engine statistics |
+| `WS /ws/predictions` | Live prediction stream |
 
-### L7 â€” Live Prediction Chart Dashboard *(Copilot â€” completed Apr 2026)*
-- Full candlestick chart: live Nifty 50 OHLCV + RITAM prediction zone overlay
-- Prediction moves 15 minutes ahead of market, continuously self-corrects
-- Confidence meter (based on analog similarity scores)
-- Pre-market prediction cycle at 9:00 AM using GIFT Nifty + global cues
-- 9 agent signal bars with live RL weights
-- Regime badge: `ðŸ”´ Crisis` / `ðŸŸ¡ Ranging` / `ðŸŸ¢ Trending Up`
-- Event overlay toggle (historical: rate hikes, elections, wars)
-- WebSocket real-time updates
-- Stack: TradingView Lightweight Charts or Recharts, Framer Motion
-- Color palette: `#0A0F1E` background, `#3B82F6` accents, green/red signals
-- PR #42 is groundwork (panel wiring) â€” this layer builds the chart itself
+---
 
-### L8 â€” Sandbox: "What If" Time Machine *(Copilot + Vandan)*
-- Timeline roller: user picks any date (e.g., "Jan 2008", "Mar 1962")
-- Condition input: "What if RBI cuts rates by 1%" or "China attacked India"
-- Condition parser: NLP â†’ structured event `{type, magnitude, date}`
-- Scenario engine: overrides live data with hypothetical, runs analog + regime + macro
-- Animated chart: replays predicted Nifty path frame by frame
-- Portfolio simulator: user enters holdings, sees predicted impact
-- Comparison mode: overlay 2008 crash vs current market
-- Collaborative: multiple users add conditions simultaneously
-- Export to PDF: scenario analysis download
-- Build scenario list from early Discord user feedback â€” don't build blindly
+## Known Constraints
 
-### L9 â€” Landing Page + Waitlist + Invite-Only Deploy *(Vandan + Copilot)*
-- Landing page structure:
-  - Hero: "Predict the Market. Understand History." + animated Nifty chart
-  - Demo video: 60-second sandbox screen recording
-  - Waitlist: email + "What would you use this for?"
-  - Discord invite: curated early users
-- Discord channels: `#predictions` (auto-post daily signal), `#sandbox-demos`, `#feedback`
-- Deploy: Docker + `docker-compose up` (API + frontend + scheduler)
-- API â†’ Fly.io, Frontend â†’ Vercel
-- Migrate SQLite â†’ PostgreSQL
-- Auth layer (invite-only token)
-- `/health` endpoint + Sentry/Logfire error tracking
-- Stack: Next.js 14 (App Router) + Tailwind + Framer Motion for landing page
-
-### L10 â€” Public Pricing + Launch *(Vandan)*
-- Stripe integration
-- Tiers: Free = delayed signals, Paid = live signals + sandbox access
-- API access tier: developers query predictions programmatically
-- Alert system: Telegram/WhatsApp notify on regime change or signal flip
-- Public launch
+- No live broker order placement is implemented or intended during evaluation.
+- yfinance fallback may be delayed and should not be treated as equal to Kite for live evaluation.
+- NSE PCR may occasionally fail; stale/unavailable state is explicitly surfaced.
+- 4-week evaluation requires discipline: no threshold tuning, no new signals, no strategy changes.
+- Some older docs/tasks may reference prediction-only architecture and should be treated as historical unless updated.
 
 ---
 
 ## Blocked / Issues
-- `tests/api/test_server.py::test_candles_endpoint_returns_200` â€” pre-existing failure (candles table not initialised in test DB, unrelated to main logic)
-- `tests/trading/test_evaluation_mode.py` has date-sensitive assertions pinned to `2026-04-25`; on the current IST date (`2026-04-26`) 3 tests fail without code regressions.
+
+- None currently blocking v2 documentation alignment.
+
+---
+
+## Next Actions
+
+1. Run final pre-market launch checklist before Day 1.
+2. Confirm `/api/data/health` is `OK` during live market hours.
+3. Confirm `/api/evaluation/metrics` returns initialized state.
+4. Observe Day 1 without changing code or thresholds.
+5. Review daily summary and trade journal after market close.
 
 ---
 
 ## Monthly Cost Tracker
+
 | Tool | Cost |
-|---|---|
+|---|---:|
 | Kite Connect | Rs500 |
-| Gemini API (7 keys, free tier) | Rs0 |
-| Jules | Rs0 |
-| Copilot | Rs0 |
-| Codex | Rs0 |
-| Ollama / Gemma | Removed |
-| **Total** | **Rs500** |
+| Gemini API via free-tier key rotation | Rs0 |
+| Local FinBERT | Rs0 |
+| SQLite local evaluation | Rs0 |
+| Jules / Copilot / Codex | Rs0 |
+| Total | Rs500 |
 
 ---
 
 ## Branch Status
-| Branch | Status | PR |
-|---|---|---|
-| `main` | Clean | â€” |
 
+| Branch | Status |
+|---|---|
+| `main` | Documentation realigned for RITAM v2 evaluation mode |

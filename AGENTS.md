@@ -1,216 +1,264 @@
-# RITAM — Master Project Context (AGENTS.md)
-# Ṛtam (ऋतम्) — The cosmic truth-order underlying all market movement
-# READ THIS FIRST — EVERY SESSION — BEFORE DOING ANYTHING
+# RITAM - Master Project Context (AGENTS.md)
+# Ritam - the truth-order beneath market movement
+# Read this first before making project changes.
 
 ---
 
-## Vision
+## Current Product State
 
-RITAM doesn't predict markets by luck — it perceives Ṛtam,
-the underlying pattern of how markets truly move.
+RITAM v2 is no longer only a market prediction engine. It is now a disciplined intraday paper-trading evaluation system for Nifty 50 options direction.
 
-Build a self-improving AI system that:
-- Maps every major historical economic/geopolitical event to its market reaction
-- Uses Gemini 2.5 Flash (7-key rotation) to reason about news, history, and market conditions
-- Analyzes real-time sentiment via FinBERT
-- Finds historical analogs — "today resembles March 2020 at 73% similarity"
-- Models relationships between GIFT Nifty, Nifty 50, and US markets
-- Makes real-time probabilistic predictions of Nifty 50 moves in the next 15 minutes
-- Continuously compares predictions to actual moves and learns from every error
-- Displays everything live on a real-time dashboard — charts, agent signals, prediction zones
-- Provides a "What If" Sandbox — time machine for scenario analysis
+Current runtime flow:
 
-Ultimate output: "74% probability Nifty 50 rises 0.3–0.6% in the next 15 minutes"
-— statistically right more often than not, across all market regimes.
-
-Tagline: "Not prediction. Perception."
-
----
-
-## System Architecture — RITAM v2
-
+```text
+Live/Cached Data -> 9 Agents -> Aggregator Prediction -> TradeGate -> Paper Execution or Skip -> Expectancy Tracking -> Evaluation Metrics
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  LAYER 1: DATA PERCEPTION                                        │
-│  Zerodha Kite API       → Nifty 50 OHLCV (15-min candles)       │
-│  GIFT Nifty feed        → Overnight gap vs NSE open              │
-│  NewsAPI + RSS          → MoneyControl, ET Markets headlines     │
-│  NSE website scraper    → FII/DII flow data                      │
-│  Kite API (VIX)         → India VIX, options PCR                │
-│  External APIs          → USD/INR, Crude Oil, Dow/Nasdaq        │
-└────────────────────────────┬─────────────────────────────────────┘
-                             │
-┌────────────────────────────▼─────────────────────────────────────┐
-│  LAYER 2: REASONING ENGINE                                       │
-│                                                                  │
-│  Gemini 2.5 Flash (PRIMARY — 7-key round-robin rotation)        │
-│  → Deep reasoning: regime classification, analog matching        │
-│  → Complex causal reasoning about macro events                  │
-│  → 7 Google account API keys = effectively unlimited throughput  │
-│  → Fallback chain: key_1 → key_2 → ... → key_7                 │
-│                                                                  │
-│  Gemini Flash-Lite (quick reasoning)                            │
-│  → Fast signal interpretation: "Is this news bullish?"          │
-│  → Headline context enrichment before FinBERT scoring           │
-│                                                                  │
-│  FinBERT (local, specialized)                                   │
-│  → Precision financial sentiment scoring (-1 to +1)             │
-└────────────────────────────┬─────────────────────────────────────┘
-                             │
-┌────────────────────────────▼─────────────────────────────────────┐
-│  LAYER 3: MULTI-AGENT PREDICTION (9 Agents, parallel)           │
-│  Each agent has a Gemini reasoning sub-layer                    │
-│                                                                  │
-│  SentimentAgent       → News mood last 24h (FinBERT + Gemini)  │
-│  FIIDerivativeAgent   → FII/DII flow + derivative positioning   │
-│  OptionsChainAgent    → OI, PCR, max pain, options flow         │
-│  SectorRotationAgent  → Sector strength + rotation signals      │
-│  MarketBreadthAgent   → Advance/decline, breadth indicators     │
-│  GlobalMarketAgent    → US markets, Dow/Nasdaq, USD/INR, crude  │
-│  MacroAgent           → RBI/Fed event detection, macro state    │
-│  RegimeClassifierAgent→ Crisis/Boom/Chop/Recovery regime        │
-│  AnalogAgent          → 15-min intraday analog matcher (20-win) │
-│                          Falls back to daily if <20 candles     │
-│                                                                  │
-│  Master Aggregator → RL-weighted signal fusion → Prediction     │
-└────────────────────────────┬─────────────────────────────────────┘
-                             │
-┌────────────────────────────▼─────────────────────────────────────┐
-│  LAYER 4: FEEDBACK + LEARNING ENGINE                             │
-│  Every 5 min: new prediction cycle                              │
-│  Every 75 min (5 candles): resolve prediction → score outcome   │
-│  direction_correct (bool) + magnitude_error + timing_error      │
-│  Weekly (Sunday 00:00 IST): PPO updates agent weights           │
-│  3 self-improvement loops:                                      │
-│    1. RL weight update (right agents get more voting power)     │
-│    2. Analog memory growth (more history = better matching)     │
-│    3. Gemini in-context learning over prediction history        │
-└────────────────────────────┬─────────────────────────────────────┘
-                             │
-┌────────────────────────────▼─────────────────────────────────────┐
-│  LAYER 5: LIVE DASHBOARD + SANDBOX                               │
-│  Panel 1: Live Nifty 50 candlestick + RITAM prediction zone     │
-│           15-min ahead prediction, self-correcting, confidence  │
-│  Panel 2: 9 agent signals with live RL weight bars              │
-│  Panel 3: Prediction vs reality tracker (live accuracy %)       │
-│  Panel 4: Historical analog viewer                              │
-│  Panel 5: Agent weights (7d/30d accuracy, sorted by weight)     │
-│  Sandbox: "What If" time machine — scenario analysis            │
-│  WebSocket: updates every 5 min during market hours             │
-└──────────────────────────────────────────────────────────────────┘
+
+The agents still produce market intelligence. TradeGate decides whether that intelligence is tradable. PerformanceTracker decides whether the system is improving or failing.
+
+Primary operating mode right now: 4-week paper-trading evaluation with frozen configuration and no tuning during the run.
+
+---
+
+## Locked Evaluation Criteria
+
+These criteria are fixed and must not be edited during the 4-week evaluation:
+
+| Metric | Required Threshold |
+|---|---:|
+| Expectancy | greater than Rs0.50 per Rs1 risked |
+| Win rate | greater than 45% |
+| Max daily drawdown | less than 5% |
+| Max total drawdown | less than 15% |
+| Evaluation duration | 4 weeks |
+| Parameter tuning | Not allowed during evaluation |
+
+Evaluation config is frozen in `src/trading/evaluation_config.py`:
+
+```python
+CONFIDENCE_THRESHOLD = 0.65
+PCR_BANDS = (0.8, 1.3)
+NO_TWEAK_MODE = True
+MAX_TRADES_PER_DAY = 3
+PCR_UNAVAILABLE_MAX_MINUTES = 30
+SUMMARY_EVERY_N_CYCLES = 5
 ```
 
 ---
 
-## Tech Stack — Full
+## Architecture - RITAM v2 Trading Evaluation Spine
+
+```text
+Layer 1: Data Perception
+- Zerodha Kite Connect for live/intraday candles when credentials are available
+- yfinance fallback for local/dev resilience
+- NewsAPI + RSS for market headlines
+- NSE option-chain endpoint for Nifty PCR
+- SQLite locally, PostgreSQL-compatible path for deployment
+
+Layer 2: Reasoning and Agents
+- Gemini 2.5 Flash is the primary reasoning LLM through 7-key rotation
+- Gemini Flash-Lite is used for quick/cheap reasoning tasks
+- FinBERT scores financial headline sentiment locally
+- 9 agents produce regime, analog, macro, sentiment, breadth, options, sector, FII, and global signals
+
+Layer 3: Prediction and Aggregation
+- Agent outputs are fused by the aggregator into direction/confidence/regime/analog context
+- Prediction output format remains governed by ADR-005
+
+Layer 4: TradeGate
+- Deterministic decision layer in `src/trading/trade_gate.py`
+- Allows trades only for `trending_up` or `trending_down`
+- Blocks restricted windows: 09:15-09:30 IST and 15:00-15:30 IST
+- Blocks confidence below 0.65 after PCR adjustment
+- Uses PCR neutral/penalty/extreme bands without changing strategy mid-run
+
+Layer 5: Paper Execution and Evaluation
+- `src/paper_trading/engine.py` handles virtual positions only
+- `src/trading/performance_tracker.py` persists trades and NO_TRADE decisions
+- `src/trading/evaluation_mode.py` exposes metrics, daily summaries, trade export, readiness checks, and safeguards
+- Evaluation endpoints are served through FastAPI
+```
+
+---
+
+## Decision Flow
+
+```text
+1. Scheduler or API starts a market cycle.
+2. Data layer refreshes intraday candles/news where configured.
+3. MarketOrchestrator runs the existing agents.
+4. Aggregator creates prediction/confidence/regime.
+5. TradeGate evaluates regime, time window, confidence, analog bias, and PCR.
+6. If TRADE: paper engine opens/updates virtual execution only.
+7. If NO_TRADE: decision is sampled/aggregated to avoid log spam.
+8. PerformanceTracker records decisions, trades, equity, expectancy, and drawdown.
+9. Evaluation endpoints expose live health and performance state.
+```
+
+Do not bypass TradeGate for paper trading.
+
+---
+
+## Key Modules
+
+| Path | Responsibility |
+|---|---|
+| `src/orchestrator/agent.py` | Main cycle: agents -> TradeGate -> paper execution/skip |
+| `src/trading/trade_gate.py` | Deterministic trade/no-trade decision engine |
+| `src/trading/pcr_fetcher.py` | NSE Nifty PCR fetch, cache, retry, stale detection |
+| `src/trading/performance_tracker.py` | SQLite trade journal, NO_TRADE logging, expectancy, drawdown |
+| `src/trading/evaluation_mode.py` | Metrics API helpers, daily summary, readiness, first-run marker, safeguards |
+| `src/trading/evaluation_config.py` | Frozen evaluation constants |
+| `src/paper_trading/engine.py` | Local paper execution and virtual P&L |
+| `src/data/market_health.py` | Candle and quote freshness diagnostics |
+| `src/data/kite_client.py` | Kite client with yfinance-compatible fallback |
+| `src/api/server.py` | FastAPI endpoints, scheduler, startup readiness logging |
+| `src/data/db.py` | Core DB helpers |
+| `src/data/db_eval_helpers.py` | Evaluation-specific DB helpers |
+
+---
+
+## Essential API Endpoints
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Basic API health |
+| `GET /api/scheduler/status` | Scheduler state |
+| `GET /api/data/health` | Candle freshness and source status |
+| `GET /api/evaluation/metrics` | Total trades, win rate, expectancy, drawdown, equity, NO_TRADE reasons |
+| `GET /api/evaluation/daily/latest` | Latest daily evaluation summary |
+| `GET /api/evaluation/trades` | Trade journal export |
+| `POST /api/evaluation/daily-summary/run` | Manual daily summary generation |
+| `GET /api/paper/trades` | Paper trade history |
+| `GET /api/paper/stats` | Paper engine stats |
+| `WS /ws/predictions` | Live prediction stream |
+
+---
+
+## Tech Stack
 
 | Component | Tool / Library | Notes |
 |---|---|---|
 | Language | Python 3.11+ | Core backend |
-| Market Data | Zerodha Kite Connect v3 | ₹500/month |
-| Sentiment NLP | FinBERT (ProsusAI/finbert) | Local cache, free |
-| Primary LLM | Gemini 2.5 Flash | 7-key round-robin, free tier |
-| Quick LLM | Gemini Flash-Lite | Fast reasoning, free tier |
-| Agent Framework | Custom parallel (FastAPI + asyncio) | 9 agents, parallel execution |
-| Backtesting | Backtrader 1.9.x | Event-driven, no look-ahead |
-| RL Training | Stable-Baselines3 2.x | PPO, weekly weight updates |
-| Database | SQLite (dev) → PostgreSQL (L8) | Migrate at L8 deploy |
-| News Ingestion | NewsAPI v2 + feedparser (RSS) | Free tier |
-| Dashboard UI | React + Vite + TypeScript + Tailwind | localhost:5173 |
-| Chart Library | TradingView Lightweight Charts / Recharts | L7 |
-| Animations | Framer Motion | L7 |
-| WebSocket Server | FastAPI + WebSockets | Streams live predictions |
-| Scheduler | APScheduler 3.x | Every 5 min market-hours |
-| Testing | pytest + pytest-cov | Jules manages |
-| Deploy (API) | Fly.io | L8 |
-| Deploy (Frontend) | Vercel | L8 |
+| Market data | Zerodha Kite Connect v3 | Preferred live source |
+| Market data fallback | yfinance | Local/dev fallback only; may be delayed |
+| PCR | NSE option-chain endpoint | Cached/retried; stale state is explicit |
+| Sentiment NLP | FinBERT | Local financial sentiment scoring |
+| Primary LLM | Gemini 2.5 Flash | 7-key rotation |
+| Quick LLM | Gemini Flash-Lite | Fast reasoning tasks |
+| Agent framework | Custom asyncio/FastAPI | 9 agents in parallel |
+| Paper execution | Local engine | No broker execution in evaluation mode |
+| Performance tracking | SQLite | Trade log, NO_TRADE log, daily metrics, evaluation state |
+| API | FastAPI + WebSockets | Backend-only observability plus dashboard support |
+| Scheduler | APScheduler | 5-minute market cycles and EOD summary |
+| Frontend | React + Vite + TypeScript + Tailwind | Dashboard |
+| Backtesting | Backtrader | Signal quality/backtest layer |
+| RL | Stable-Baselines3 PPO | Weekly agent weight updates |
 
 ---
 
-## Layer Roadmap
+## Runtime Modes
 
-| Layer | Name | Status |
-|---|---|---|
-| Core | 9 Agents + Orchestrator + Gemini Brain | ✅ Done |
-| L0 | Gemini 7-Key Rotation | ✅ Done |
-| L1 | Auto-Scheduler (5-min cycles) | ✅ Done |
-| L2 | 9 Macro Agents Parallel | ✅ Done |
-| L3 | 15-min Intraday Analog Finder | ✅ Done |
-| L4 | RL Weight Updater (Sunday 00:00 IST) | ✅ Done |
-| L5 | Paper Trading Engine | 🔄 In Progress |
-| L6 | Signal Quality + Backtesting | ⏳ Next |
-| L7 | Live Prediction Chart Dashboard | ⏳ Pending |
-| L8 | Sandbox — "What If" Time Machine | ⏳ Pending |
-| L9 | Landing Page + Waitlist + Invite Deploy | ⏳ Pending |
-| L10 | Public Pricing + Launch | ⏳ Pending |
+| Mode | Behavior |
+|---|---|
+| Local dev | SQLite, yfinance fallback allowed, API at localhost |
+| Paper evaluation | Kite preferred, TradeGate active, paper execution only, config frozen |
+| Dashboard | Frontend consumes API/WebSocket; trading logic remains backend-side |
+| Production deploy | PostgreSQL-compatible path; secrets from deployment platform |
+
+There is no live broker order placement in the current evaluation system.
 
 ---
 
-## Folder → Agent Territory Map
+## Non-Negotiable Rules
 
-| Folder | Primary Agent | What Lives There |
-|---|---|---|
-| src/data/ | Codex | Kite feed, news ingestion, DB helpers |
-| src/reasoning/ | Copilot/Codex | Gemini client, analog finder, regime classifier |
-| src/sentiment/ | Codex | FinBERT scorer, preprocessor |
-| src/backtest/ | Codex | Backtrader engine, signal backtester |
-| src/agents/ | Copilot | All 9 agents |
-| src/learning/ | Jules | Feedback loop, RL trainer, weight updater |
-| src/paper_trading/ | Jules | Paper trading engine |
-| src/api/ | Copilot | FastAPI server, all endpoints |
-| src/config/ | Any | Settings, constants, weight loader |
-| src/orchestrator/ | Copilot | MarketOrchestrator.run_cycle() |
-| tests/ | Jules | All unit + integration tests |
-| frontend/ | Copilot | React dashboard |
-| TASKS/ | Vandan | Task assignment files |
-
----
-
-## Rules for ALL Agents (Non-Negotiable)
-
-1. NEVER delete existing tests or working code
-2. Every new module MUST have a corresponding test file in tests/
-3. ALWAYS update STATUS.md after completing any work
-4. ALL API keys go ONLY in .env — never hardcoded anywhere
-5. Use snake_case for all Python files and functions
-6. Branch naming: feature/module-name (e.g., feature/paper-trading-engine)
-7. NEVER modify AGENTS.md, DECISIONS.md, or .env
-8. Read STATUS.md before starting any task
-9. Read DECISIONS.md before making any architectural choices
-10. If blocked, write the blocker in STATUS.md under "Blocked" and stop
-11. Gemini 2.5 Flash (7-key rotation) is the primary LLM — use it for all reasoning
-12. Gemini Flash-Lite for quick/fast reasoning tasks
-13. DB changes must be additive only — never ALTER or DROP existing tables
+1. Never delete existing tests or working code.
+2. Every new module must have a corresponding test file in `tests/`.
+3. Always update `STATUS.md` after completing project work.
+4. API keys and tokens go only in `.env` or deployment secrets. Never hardcode secrets.
+5. Use `snake_case` for Python files and functions.
+6. Branch naming: `feature/module-name` unless the active toolchain requires another prefix.
+7. Do not modify `.env`.
+8. Do not modify `AGENTS.md` or `DECISIONS.md` unless the project owner explicitly asks for a documentation/architecture update.
+9. Read `STATUS.md` before starting work.
+10. Read `DECISIONS.md` before structural or architectural changes.
+11. If blocked, write the blocker in `STATUS.md` under Blocked and stop.
+12. Gemini 2.5 Flash through `src/reasoning/gemini_client.py` remains the primary LLM path.
+13. Gemini Flash-Lite is reserved for quick/fast reasoning tasks.
+14. DB changes must be additive only. Do not drop tables or remove persisted data.
+15. During evaluation mode, do not tune thresholds or add signals.
+16. Do not change TradeGate/PCR logic during the 4-week evaluation unless the system is stopped for a safety incident.
 
 ---
 
-## Prediction Output Format (ADR-005 — DO NOT CHANGE)
+## Prediction Output Format (ADR-005 - Do Not Change)
 
 ```python
 {
-  "timestamp": "2026-04-15T10:30:00+05:30",
-  "predicted_direction": "up",        # up / down / neutral
-  "predicted_move_pct": 0.42,
-  "confidence": 0.74,
-  "timeframe_minutes": 15,
-  "signals_used": ["sentiment", "fii_derivative", "options_chain", "macro", "analog"],
-  "regime": "trending_up",
-  "historical_analog": {
-    "match": "March 2020 COVID bounce",
-    "similarity": 0.73,
-    "analog_outcome": "+8% over 10 sessions"
-  }
+    "timestamp": "2026-04-15T10:30:00+05:30",
+    "predicted_direction": "up",
+    "predicted_move_pct": 0.42,
+    "confidence": 0.74,
+    "timeframe_minutes": 15,
+    "signals_used": ["sentiment", "fii_derivative", "options_chain", "macro", "analog"],
+    "regime": "trending_up",
+    "historical_analog": {
+        "match": "March 2020 COVID bounce",
+        "similarity": 0.73,
+        "analog_outcome": "+8% over 10 sessions"
+    }
 }
 ```
 
 ---
 
-## Definition of Done (Any Module)
+## TradeGate Output Format
 
-- [ ] Core logic file written
-- [ ] Test file with minimum 5 test cases
-- [ ] All tests pass: `pytest tests/` shows no failures
-- [ ] STATUS.md updated
-- [ ] No hardcoded API keys or absolute file paths
-- [ ] Errors handled gracefully (timeouts, empty input, API failures)
-- [ ] Gemini 2.5 Flash used for reasoning (7-key rotation via `src/reasoning/gemini_client.py`)
+Every TradeGate decision must return:
+
+```python
+{
+    "decision": "TRADE",
+    "reason_code": "TRADE_ALLOWED",
+    "reason": "Trade allowed by deterministic gate",
+    "signal": "BUY_CALL",
+    "details": {
+        "regime": "trending_up",
+        "confidence_original": 0.72,
+        "confidence_adjusted": 0.72,
+        "confidence_threshold": 0.65,
+        "pcr_value": 1.04,
+        "pcr_penalty": 0.0,
+        "pcr_is_stale": False
+    }
+}
+```
+
+Reason codes are operational telemetry. Do not replace them with free-form-only strings.
+
+---
+
+## Definition of Done
+
+- [ ] Core logic file written or documentation updated as requested
+- [ ] Tests added for new code modules
+- [ ] Relevant tests pass
+- [ ] `STATUS.md` updated
+- [ ] No hardcoded API keys or absolute local paths
+- [ ] Errors handled gracefully: timeouts, empty inputs, API failures
+- [ ] No strategy parameters changed during evaluation mode
+- [ ] For DB work: additive migration only
+
+---
+
+## Current Operational Discipline
+
+For the 4-week paper-trading evaluation:
+
+- Observe, do not optimize.
+- Record every TRADE and sampled/aggregated NO_TRADE reason.
+- Use `/api/data/health` before trusting a trading day.
+- Use `/api/evaluation/metrics` and `/api/evaluation/daily/latest` for monitoring.
+- Treat one trade, one day, or one loss as noise unless it exposes a system fault.
+- Stop only for safety or infrastructure failures, not for normal losing trades.
